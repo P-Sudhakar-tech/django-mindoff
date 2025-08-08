@@ -1,0 +1,2 @@
+[console_scripts]
+django-mindoff = django_mindoff.views:main
