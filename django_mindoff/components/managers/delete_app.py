@@ -1,6 +1,8 @@
 import os
 import shutil
 from pathlib import Path
+from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+
 
 # ======== CLASSES =======
 # Add Classes here
@@ -76,6 +78,7 @@ class DjangoAppDeleter:
             f.truncate()
             print("🧹 Removed route from urls.py")
             
+    @rollback_file_alterations
     def run(self):
         if not os.path.exists(self.app_dir):
             print(f"⚠️ App directory not found: {self.app_dir}")

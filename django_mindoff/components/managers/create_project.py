@@ -3,6 +3,7 @@ import re
 import subprocess
 import shutil
 from pathlib import Path
+from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
 
 
 # ======== CLASSES =======
@@ -19,7 +20,8 @@ class DjangoProjectCreator:
         self.py_cmd = self.project_root / venv_name / "Scripts" / "python"
         self.pip_cmd = self.project_root / venv_name / "Scripts" / "pip"
         self.django_admin_cmd = self.project_root / venv_name / "Scripts" / "django-admin"
-
+        
+    @rollback_file_alterations
     def run(self):
             os.chdir(self.project_root)
             print("\n📝 Dry Run Mode:" if self.dry_run else "\n⚙️ Running Project Setup")

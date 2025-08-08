@@ -1,6 +1,8 @@
 import shutil
 from pathlib import Path
 from typing import List
+from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+
 
 # ======== CLASSES =======
 # Add Classes here
@@ -66,6 +68,7 @@ class DjangoProjectDeleter:
             for p in self.skipped:
                 print(f"  • {p.relative_to(self.project_root)}")
 
+    @rollback_file_alterations
     def run(self):
         print("\n🗑️ Starting project cleanup...")
         self._identify_targets()

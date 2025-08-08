@@ -1,5 +1,7 @@
 import re
 from pathlib import Path
+from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+
 
 # ======== CONSTANTS =======
 # Add Constants here
@@ -180,7 +182,7 @@ class {self.final_model_name}Serializer(serializers.ModelSerializer):
             base_import = "from rest_framework import serializers"
         return base_import, imports
 
-
+    @rollback_file_alterations
     def run(self):
         if not self._parse_input():
             return

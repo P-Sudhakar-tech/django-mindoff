@@ -133,10 +133,7 @@ class DjangoApiCreator:
 
             if norm_url in existing_patterns:
                 raise FileExistsError(f"URL pattern '{norm_url}' already exists in urls.py")
-
-            # 🔁 Call the route name generator function
             route_name = self._generate_route_name(norm_url, existing_names, existing_names_lower)
-
             insert_lines.append(f"    path('{norm_url}', views.{self.api_function_name}, name='{route_name}'),")
 
         new_text = pattern.sub(r"\1" + "\n".join(insert_lines) + r"\n\2", text)
