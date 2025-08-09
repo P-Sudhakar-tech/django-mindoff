@@ -2,8 +2,8 @@ from django.db import models
 from django.contrib.auth import get_user_model
 
 class TimeStampModel(models.Model):
-    created_on = models.DateTimeField(auto_now_add=True)
-    updated_on = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         abstract = True
