@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+from apps.django_mindoff.components.helper_kit import mo_helper_kit
 
 
 # ======== CLASSES =======
@@ -17,14 +17,14 @@ class DjangoAppDeleter:
         self.settings_path = os.path.join(self.project_root, "config", "settings.py")
         self.urls_path = os.path.join(self.project_root, "config", "urls.py")
         self.app_name = self.dotted_path.split(".")[-1]
-        self.app_dir = os.path.join(self.project_root, self.dotted_path.replace(".", "/"))
+        self.app_dir = os.path.join(
+            self.project_root, self.dotted_path.replace(".", "/")
+        )
 
     def _normalize_path(self, dotted_path: str) -> str:
         app_names = dotted_path.split(".")
         if len(app_names) != 2:
-            raise ValueError(
-                f"Invalid App Name '{dotted_path}'"
-            )
+            raise ValueError(f"Invalid App Name '{dotted_path}'")
         normalized = [app_names[0]] + [p.lower() for p in app_names[1:]]
         if any(not p for p in normalized):
             raise ValueError(
@@ -33,8 +33,14 @@ class DjangoAppDeleter:
         return ".".join(normalized)
 
     def _confirm_deletion(self) -> bool:
-        confirm = input(f"❗ Are you sure you want to delete the app '{self.dotted_path}'? (y/N): ").strip().lower()
-        return confirm == 'y'
+        confirm = (
+            input(
+                f"❗ Are you sure you want to delete the app '{self.dotted_path}'? (y/N): "
+            )
+            .strip()
+            .lower()
+        )
+        return confirm == "y"
 
     def _delete_app_dir(self):
         shutil.rmtree(self.app_dir)
@@ -77,8 +83,8 @@ class DjangoAppDeleter:
             f.write("\n".join(updated))
             f.truncate()
             print("🧹 Removed route from urls.py")
-            
-    @rollback_file_alterations
+
+    @mo_helper_kit.file_guardian
     def run(self):
         if not os.path.exists(self.app_dir):
             print(f"⚠️ App directory not found: {self.app_dir}")
@@ -94,6 +100,7 @@ class DjangoAppDeleter:
         self._remove_from_urls()
         print("✅ App deletion complete:", self.dotted_path)
 
+
 # ======== FUNCTIONS =======
 # Add Functions here
 # F1. Command Entry Point -- Registers the command into the CLI.
@@ -101,13 +108,11 @@ def register_subcommand(subparsers):
     def _delete_app(args):
         for app_name in args.app_names:
             DjangoAppDeleter(app_name).run()
-    parser = subparsers.add_parser(
-        "deleteapp",
-        help="Delete django apps."
-    )
+
+    parser = subparsers.add_parser("deleteapp", help="Delete django apps.")
     parser.add_argument(
         "app_names",
         nargs="+",
-        help="App Name for the app e.g., 'blog' or stack multiple apps like 'app1 app2'"
+        help="App Name for the app e.g., 'blog' or stack multiple apps like 'app1 app2'",
     )
     parser.set_defaults(handler=_delete_app)

@@ -1,7 +1,8 @@
 import os
 import subprocess
 from pathlib import Path
-from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+from apps.django_mindoff.components.helper_kit import mo_helper_kit
+
 
 # ======== CLASSES =======
 # Add Classes here
@@ -15,14 +16,14 @@ class DjangoAppCreator:
         self.settings_path = os.path.join(self.project_root, "config", "settings.py")
         self.urls_path = os.path.join(self.project_root, "config", "urls.py")
         self.app_name = self.dotted_path.split(".")[-1]
-        self.app_dir = os.path.join(self.project_root, self.dotted_path.replace(".", "/"))
+        self.app_dir = os.path.join(
+            self.project_root, self.dotted_path.replace(".", "/")
+        )
 
     def _normalize_path(self, dotted_path: str) -> str:
         app_names = dotted_path.split(".")
         if len(app_names) != 2:
-            raise ValueError(
-                f"Invalid App Name '{dotted_path}'"
-            )
+            raise ValueError(f"Invalid App Name '{dotted_path}'")
         normalized = [app_names[0]] + [p.lower() for p in app_names[1:]]
         if any(not p for p in normalized):
             raise ValueError(
@@ -39,8 +40,7 @@ class DjangoAppCreator:
 
     def _run_startapp(self):
         subprocess.run(
-            ["python", "manage.py", "startapp", self.app_name, self.app_dir],
-            check=True
+            ["python", "manage.py", "startapp", self.app_name, self.app_dir], check=True
         )
         print(f"✅ App created at: {self.app_dir}")
 
@@ -75,11 +75,13 @@ class DjangoAppCreator:
 
     def _patch_models_py(self):
         path = os.path.join(self.app_dir, "models.py")
-        if not os.path.exists(path): return
+        if not os.path.exists(path):
+            return
         line = "import uuid\nfrom django_mindoff import models as mindoffmodels\n"
         with open(path, "r+") as f:
             lines = f.readlines()
-            if line in lines: return
+            if line in lines:
+                return
             for i, l in enumerate(lines):
                 if not l.strip().startswith(("import", "from ")):
                     lines.insert(i, line)
@@ -137,7 +139,7 @@ class DjangoAppCreator:
                 f.truncate()
                 print("✅ urls.py linked")
 
-    @rollback_file_alterations
+    @mo_helper_kit.file_guardian
     def run(self):
         if os.path.exists(self.app_dir):
             print(f"⚠️ App '{self.dotted_path}' already exists at: {self.app_dir}")
@@ -153,6 +155,7 @@ class DjangoAppCreator:
         self._update_project_urls()
         print("🎉 App creation complete for:", self.dotted_path)
 
+
 # ======== FUNCTIONS =======
 # Add Functions here
 # F1. Command Entry Point -- Registers the command into the CLI.
@@ -160,13 +163,13 @@ def register_subcommand(subparsers):
     def _create_app(args):
         for app_name in args.app_names:
             DjangoAppCreator(app_name).run()
+
     parser = subparsers.add_parser(
-        "createapp",
-        help="Create a new Django app under the 'apps' folder"
+        "createapp", help="Create a new Django app under the 'apps' folder"
     )
     parser.add_argument(
         "app_names",
         nargs="+",
-        help="App Name for the app e.g., 'blog' or stack multiple apps like 'app1 app2'"
+        help="App Name for the app e.g., 'blog' or stack multiple apps like 'app1 app2'",
     )
     parser.set_defaults(handler=_create_app)

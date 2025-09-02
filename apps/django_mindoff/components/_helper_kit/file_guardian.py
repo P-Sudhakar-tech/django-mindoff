@@ -7,12 +7,14 @@ from pathlib import Path
 
 # ======== SUB FUNCTIONS =======
 
+
 def _sha256sum(file_path):
     h = hashlib.sha256()
     with open(file_path, "rb") as f:
         while chunk := f.read(8192):
             h.update(chunk)
     return h.hexdigest()
+
 
 def _delete_file_safely(file):
     try:
@@ -22,6 +24,7 @@ def _delete_file_safely(file):
     except Exception as err:
         print(f"⚠️ Could not delete file {file}: {err}")
 
+
 def _delete_dir_safely(directory):
     try:
         if os.path.exists(directory):
@@ -29,6 +32,7 @@ def _delete_dir_safely(directory):
             print(f"🧹 Deleted directory: {directory}")
     except Exception as err:
         print(f"⚠️ Could not delete directory {directory}: {err}")
+
 
 def _backup_modified_file(path, modified_files, backup_root):
     try:
@@ -40,6 +44,7 @@ def _backup_modified_file(path, modified_files, backup_root):
     except Exception as err:
         print(f"⚠️ Could not backup file {path}: {err}")
 
+
 def _restore_modified_file(path, backup_path):
     try:
         shutil.copy2(backup_path, path)
@@ -47,7 +52,9 @@ def _restore_modified_file(path, backup_path):
     except Exception as err:
         print(f"⚠️ Could not restore file {path}: {err}")
 
+
 # ======== WRAPPED FUNC MAKERS =======
+
 
 def _make_wrapped_open(created_files, modified_files, backup_root, original_open):
     def _wrapped_open(file, mode="r", *a, **k):
@@ -59,7 +66,9 @@ def _make_wrapped_open(created_files, modified_files, backup_root, original_open
             elif path not in modified_files:
                 _backup_modified_file(path, modified_files, backup_root)
         return original_open(file, mode, *a, **k)
+
     return _wrapped_open
+
 
 def _make_wrapped_makedirs(created_dirs, original_makedirs):
     def _wrapped_makedirs(name, exist_ok=False):
@@ -67,9 +76,13 @@ def _make_wrapped_makedirs(created_dirs, original_makedirs):
         if not path.exists():
             created_dirs.add(str(path))
         return original_makedirs(name, exist_ok=exist_ok)
+
     return _wrapped_makedirs
 
-def _make_wrapped_write_text(created_files, modified_files, backup_root, original_write_text):
+
+def _make_wrapped_write_text(
+    created_files, modified_files, backup_root, original_write_text
+):
     def _wrapped_write_text(path_obj, data, encoding=None, errors=None):
         file = str(path_obj)
         if not os.path.exists(file):
@@ -77,9 +90,13 @@ def _make_wrapped_write_text(created_files, modified_files, backup_root, origina
         elif file not in modified_files:
             _backup_modified_file(file, modified_files, backup_root)
         return original_write_text(path_obj, data, encoding=encoding, errors=errors)
+
     return _wrapped_write_text
 
-def _make_wrapped_write_bytes(created_files, modified_files, backup_root, original_write_bytes):
+
+def _make_wrapped_write_bytes(
+    created_files, modified_files, backup_root, original_write_bytes
+):
     def _wrapped_write_bytes(path_obj, data):
         file = str(path_obj)
         if not os.path.exists(file):
@@ -87,7 +104,9 @@ def _make_wrapped_write_bytes(created_files, modified_files, backup_root, origin
         elif file not in modified_files:
             _backup_modified_file(file, modified_files, backup_root)
         return original_write_bytes(path_obj, data)
+
     return _wrapped_write_bytes
+
 
 def _make_wrapped_mkdir(created_dirs, original_mkdir):
     def _wrapped_mkdir(self, mode=0o777, parents=False, exist_ok=False):
@@ -95,12 +114,14 @@ def _make_wrapped_mkdir(created_dirs, original_mkdir):
         if not Path(self).exists():
             created_dirs.add(path_str)
         return original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
+
     return _wrapped_mkdir
 
 
 # ======== MAIN FUNCTION =======
 
-def rollback_file_alterations(func):
+
+def file_guardian(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         created_files, created_dirs = set(), set()
@@ -115,10 +136,16 @@ def rollback_file_alterations(func):
         original_mkdir = Path.mkdir
 
         # Create wrapped versions
-        _wrapped_open = _make_wrapped_open(created_files, modified_files, backup_root, original_open)
+        _wrapped_open = _make_wrapped_open(
+            created_files, modified_files, backup_root, original_open
+        )
         _wrapped_makedirs = _make_wrapped_makedirs(created_dirs, original_makedirs)
-        _wrapped_write_text = _make_wrapped_write_text(created_files, modified_files, backup_root, original_write_text)
-        _wrapped_write_bytes = _make_wrapped_write_bytes(created_files, modified_files, backup_root, original_write_bytes)
+        _wrapped_write_text = _make_wrapped_write_text(
+            created_files, modified_files, backup_root, original_write_text
+        )
+        _wrapped_write_bytes = _make_wrapped_write_bytes(
+            created_files, modified_files, backup_root, original_write_bytes
+        )
         _wrapped_mkdir = _make_wrapped_mkdir(created_dirs, original_mkdir)
 
         # Patch

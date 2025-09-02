@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 from typing import List
-from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+from apps.django_mindoff.components.helper_kit import mo_helper_kit
 
 
 # ======== CLASSES =======
@@ -12,9 +12,19 @@ class DjangoProjectDeleter:
         self.default_exclude = {".git", ".venv", ".gitignore", "README.md", ".env.bak"}
         self.exclude_files = {"automate.py", "run_env.sh", "run_env.bat"}
         self.project_artifacts = [
-                "config", "apps", "templates", ".env", ".gitignore", "pytest.ini", "db.sqlite3",
-                "manage.py", "mindoff.py", "README.md", ".venv", ".git"
-            ]
+            "config",
+            "apps",
+            "templates",
+            ".env",
+            ".gitignore",
+            "pytest.ini",
+            "db.sqlite3",
+            "manage.py",
+            "mindoff.py",
+            "README.md",
+            ".venv",
+            ".git",
+        ]
         self.dry_run = dry_run
         self.delete_all = delete_all
         self.deleted: List[Path] = []
@@ -44,7 +54,9 @@ class DjangoProjectDeleter:
         print("\n⚠️ The following will be deleted:")
         for path in self.to_delete:
             print(f"  • {path.relative_to(self.project_root)}")
-        confirm = input("\nAre you sure you want to proceed? This cannot be undone. (y/n): ").lower()
+        confirm = input(
+            "\nAre you sure you want to proceed? This cannot be undone. (y/n): "
+        ).lower()
         return confirm == "y"
 
     def _perform_deletion(self):
@@ -68,7 +80,7 @@ class DjangoProjectDeleter:
             for p in self.skipped:
                 print(f"  • {p.relative_to(self.project_root)}")
 
-    @rollback_file_alterations
+    @mo_helper_kit.file_guardian
     def run(self):
         print("\n🗑️ Starting project cleanup...")
         self._identify_targets()
@@ -84,24 +96,25 @@ class DjangoProjectDeleter:
         self._perform_deletion()
         self._report_summary()
 
+
 # ======== FUNCTIONS =======
 # Add Functions here
 # F1. Command Entry Point -- Registers the command into the CLI.
 def register_subcommand(subparsers):
     def _delete_project(args):
         DjangoProjectDeleter(dry_run=args.dry_run, delete_all=args.all).run()
+
     parser = subparsers.add_parser(
-        "deleteproject",
-        help="Deletes the Current Django Project."
+        "deleteproject", help="Deletes the Current Django Project."
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show planned actions without making any changes"
+        help="Show planned actions without making any changes",
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Delete all project artificates related to mindoff"
+        help="Delete all project artificates related to mindoff",
     )
     parser.set_defaults(handler=_delete_project)

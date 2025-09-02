@@ -1,0 +1,6 @@
+code,title,description,status
+UNEXPECTED_ERR,Uh oh!,An Unexpected Error has occurred.,fail
+VALIDATION_ERR,Validation Failed,Submitted data failed validation.,fail
+SUCCESS,Success,Operation completed successfully.,ok
+CREATED,Successfully Created,Information have been saved successfully,ok
+UPDATED,Successfully Updated,Information have been updated successfully,ok

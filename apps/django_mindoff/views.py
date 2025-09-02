@@ -3,6 +3,7 @@ import argparse
 import importlib
 from django_mindoff.components import managers
 
+
 def main():
     parser = argparse.ArgumentParser(prog="django-mindoff")
     subparsers = parser.add_subparsers(dest="command", required=True)

@@ -3,7 +3,7 @@ import re
 import subprocess
 import shutil
 from pathlib import Path
-from django_mindoff.components.decorators.rollback_file_alterations import rollback_file_alterations
+from apps.django_mindoff.components.helper_kit import mo_helper_kit
 
 
 # ======== CLASSES =======
@@ -19,28 +19,30 @@ class DjangoProjectCreator:
         self.venv_name = venv_name
         self.py_cmd = self.project_root / venv_name / "Scripts" / "python"
         self.pip_cmd = self.project_root / venv_name / "Scripts" / "pip"
-        self.django_admin_cmd = self.project_root / venv_name / "Scripts" / "django-admin"
-        
-    @rollback_file_alterations
+        self.django_admin_cmd = (
+            self.project_root / venv_name / "Scripts" / "django-admin"
+        )
+
+    @mo_helper_kit.file_guardian
     def run(self):
-            os.chdir(self.project_root)
-            print("\n📝 Dry Run Mode:" if self.dry_run else "\n⚙️ Running Project Setup")
-            actions = self._plan_actions()
-            if self.dry_run:
-                for act in actions:
-                    print(f"  • {act}")
-                print("\n✅ Dry run complete. No files modified.")
-                return
-            self._create_venv()
-            self._install_packages()
-            self._initialize_django_project()
-            self._update_settings()
-            self._create_env_file()
-            self._update_urls()
-            self._create_extra_folders()
-            self._write_supporting_files()
-            self._initialize_git()
-            print("✅ Django project setup complete.")
+        os.chdir(self.project_root)
+        print("\n📝 Dry Run Mode:" if self.dry_run else "\n⚙️ Running Project Setup")
+        actions = self._plan_actions()
+        if self.dry_run:
+            for act in actions:
+                print(f"  • {act}")
+            print("\n✅ Dry run complete. No files modified.")
+            return
+        self._create_venv()
+        self._install_packages()
+        self._initialize_django_project()
+        self._update_settings()
+        self._create_env_file()
+        self._update_urls()
+        self._create_extra_folders()
+        self._write_supporting_files()
+        self._initialize_git()
+        print("✅ Django project setup complete.")
 
     def _plan_actions(self):
         actions = [
@@ -50,17 +52,19 @@ class DjangoProjectCreator:
         optional = self._prompt_optional_dependencies()
         if optional:
             actions.append(f"Install optional packages: {', '.join(optional)}")
-        actions.extend([
-            "Run django-admin startproject config .",
-            f"Run manage.py startapp {self.apps_dir_name}",
-            "Modify settings.py",
-            "Create .env with secret key",
-            "Update urls.py",
-            "Write templates",
-            "Write pytest.ini",
-            "Write .gitignore",
-            "Initialize Git repository"
-        ])
+        actions.extend(
+            [
+                "Run django-admin startproject config .",
+                f"Run manage.py startapp {self.apps_dir_name}",
+                "Modify settings.py",
+                "Create .env with secret key",
+                "Update urls.py",
+                "Write templates",
+                "Write pytest.ini",
+                "Write .gitignore",
+                "Initialize Git repository",
+            ]
+        )
         self.optional_packages = optional
         return actions
 
@@ -83,39 +87,68 @@ class DjangoProjectCreator:
 
     def _install_packages(self):
         print("📦 Installing base dependencies...")
-        subprocess.run([self.pip_cmd, "install", "django", "djangorestframework", "python-decouple", "pytest", "pytest-django"], check=True)
+        subprocess.run(
+            [
+                self.pip_cmd,
+                "install",
+                "django",
+                "djangorestframework",
+                "python-decouple",
+                "pytest",
+                "pytest-django",
+            ],
+            check=True,
+        )
         if self.optional_packages:
-            print(f"📦 Installing optional packages: {', '.join(self.optional_packages)}")
-            subprocess.run([self.pip_cmd, "install", *self.optional_packages], check=True)
+            print(
+                f"📦 Installing optional packages: {', '.join(self.optional_packages)}"
+            )
+            subprocess.run(
+                [self.pip_cmd, "install", *self.optional_packages], check=True
+            )
         # Currently Experimental from local, Will be replaced with actual package
-        local_package_path = str(Path(__file__).resolve().parent.parent.parent.parent) 
+        local_package_path = str(Path(__file__).resolve().parent.parent.parent.parent)
         subprocess.run([self.pip_cmd, "install", "-e", local_package_path], check=True)
 
     def _initialize_django_project(self):
         print("🚀 Starting Django project...")
-        subprocess.run([self.django_admin_cmd, "startproject", "config", "."], check=True)
+        subprocess.run(
+            [self.django_admin_cmd, "startproject", "config", "."], check=True
+        )
 
     def _update_settings(self):
         print("🛠 Updating settings.py...")
         content = self.settings_path.read_text()
         lines, secret_key = [], ""
         insert_pos = {}
-        lines, secret_key, insert_pos = self._extract_secret_and_debug_info(content, lines, secret_key, insert_pos)
+        lines, secret_key, insert_pos = self._extract_secret_and_debug_info(
+            content, lines, secret_key, insert_pos
+        )
         if "from decouple import config" not in content:
             for i, line in enumerate(lines):
                 if "from pathlib import Path" in line:
                     lines.insert(i + 1, "from decouple import config")
                     break
-        if 'SECRET_KEY' in insert_pos:
-            lines.insert(insert_pos['SECRET_KEY'], "SECRET_KEY = config('DJANGO_SECRET_KEY')")
-        if 'DEBUG' in insert_pos:
-            lines.insert(insert_pos['DEBUG'], "DEBUG = config('DEBUG', cast=bool, default=True)")
+        if "SECRET_KEY" in insert_pos:
+            lines.insert(
+                insert_pos["SECRET_KEY"], "SECRET_KEY = config('DJANGO_SECRET_KEY')"
+            )
+        if "DEBUG" in insert_pos:
+            lines.insert(
+                insert_pos["DEBUG"], "DEBUG = config('DEBUG', cast=bool, default=True)"
+            )
         updated = "\n".join(lines)
         updated = self._append_to_list(updated, "INSTALLED_APPS", "rest_framework")
         if "TEMPLATES = [" in updated:
-            updated = re.sub(r"('DIRS':\s*)\[\s*\]",r"\1[os.path.join(BASE_DIR, 'templates')]",updated)
+            updated = re.sub(
+                r"('DIRS':\s*)\[\s*\]",
+                r"\1[os.path.join(BASE_DIR, 'templates')]",
+                updated,
+            )
             if "import os" not in updated:
-                updated = updated.replace("from pathlib import Path", "import os\nfrom pathlib import Path")
+                updated = updated.replace(
+                    "from pathlib import Path", "import os\nfrom pathlib import Path"
+                )
 
         self.settings_path.write_text(updated)
         self.secret_key = secret_key
@@ -125,10 +158,10 @@ class DjangoProjectCreator:
         for idx, line in enumerate(content.splitlines()):
             if line.strip().startswith("SECRET_KEY"):
                 secret_key = line.split("=", 1)[1].strip()
-                insert_pos['SECRET_KEY'] = idx
+                insert_pos["SECRET_KEY"] = idx
                 continue
             if line.strip().startswith("DEBUG"):
-                insert_pos['DEBUG'] = idx
+                insert_pos["DEBUG"] = idx
                 continue
             lines.append(line)
         return lines, secret_key, insert_pos
@@ -140,9 +173,11 @@ class DjangoProjectCreator:
     def _update_urls(self):
         print("🌐 Updating urls.py...")
         content = self.urls_path.read_text()
-        content = re.sub(r'^\s*"""(?:.|\n)*?"""', '', content).lstrip()
+        content = re.sub(r'^\s*"""(?:.|\n)*?"""', "", content).lstrip()
         if "from django.urls import" in content and "include" not in content:
-            content = content.replace("from django.urls import ", "from django.urls import include, ")
+            content = content.replace(
+                "from django.urls import ", "from django.urls import include, "
+            )
         elif "from django.urls import" not in content:
             content = "from django.urls import path, include\n" + content
         if "from django.views.generic.base import TemplateView" not in content:
@@ -150,7 +185,7 @@ class DjangoProjectCreator:
         if "path('', TemplateView.as_view(" not in content:
             content = content.replace(
                 "urlpatterns = [",
-                "urlpatterns = [\n    path('', TemplateView.as_view(template_name='index.html')),"
+                "urlpatterns = [\n    path('', TemplateView.as_view(template_name='index.html')),",
             )
         self.urls_path.write_text(content)
 
@@ -163,7 +198,7 @@ class DjangoProjectCreator:
         templates_dst.mkdir(exist_ok=True)
         for html_file in templates_src.glob("*.html"):
             shutil.copy(html_file, templates_dst / html_file.name)
-        
+
     def _write_supporting_files(self):
         print("🧩 Writing mindoff.py CLI runner")
         source = Path(__file__).parent / "resources" / "mindoff.py"
@@ -201,22 +236,16 @@ class DjangoProjectCreator:
                 inside_list = False
         return "\n".join(new_lines)
 
-    
 
 # ======== FUNCTIONS =======
 def register_subcommand(subparsers):
     def _create_project(args):
         DjangoProjectCreator(dry_run=args.dry_run).run()
-    parser = subparsers.add_parser(
-        "createproject",
-        help="Create a new Django Project."
-    )
+
+    parser = subparsers.add_parser("createproject", help="Create a new Django Project.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show planned actions without making any changes"
+        help="Show planned actions without making any changes",
     )
     parser.set_defaults(handler=_create_project)
-
-
-
