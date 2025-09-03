@@ -17,10 +17,10 @@ from apps.django_mindoff.components.validation_kit import (
     mo_validation_kit,
     ValidationError,
 )
-from django_mindoff.components.helpers.tdd_fixtures import LogicTestCase
+from django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
 
 
-class TestImmediateValidator(LogicTestCase):
+class TestImmediateValidator(MindoffTestCase):
     @pytest.mark.parametrize(
         "fn, kwargs, is_exception, expected_exc",
         [

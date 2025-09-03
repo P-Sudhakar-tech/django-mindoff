@@ -1,18 +1,35 @@
 import pytest
-from django_mindoff.components.helpers.tdd_fixtures import LogicTestCase
-import re
 from django.db import models
 from django.apps import apps
 from django.conf import settings
+from django.db.models import ForeignKey
+from django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
 
 # ------------------------
 # ⚓ CONSTANTS
 # ------------------------
+PARENT_FIELDS = {
+    "name": models.CharField(max_length=50),
+    "nickname": models.CharField(max_length=50, null=True, blank=True),  # optional
+    "description": models.TextField(null=True, blank=True),  # optional
+}
+
+CHILD_FIELDS = {
+    "name": models.CharField(max_length=50),
+    "nickname": models.CharField(max_length=50, null=True, blank=True),
+    "description": models.TextField(null=True, blank=True),
+}
+
+GRANDCHILD_FIELDS = {
+    "name": models.CharField(max_length=50),
+    "nickname": models.CharField(max_length=50, null=True, blank=True),
+    "description": models.TextField(null=True, blank=True),
+}
 snake_case_regex = r"^[a-z0-9_]+$"
 pascal_case_regex = r"^[A-Z][a-zA-Z0-9]+$"
 
 
-class TestInitTempApp(LogicTestCase):
+class TestInitTempApp(MindoffTestCase):
     # ------------------------
     # ✅ ACCEPTANCE TESTS
     # ------------------------
@@ -130,7 +147,7 @@ class TestInitTempApp(LogicTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestInitTempModel(LogicTestCase):
+class TestInitTempModel(MindoffTestCase):
     # ------------------------
     # ✅ ACCEPTANCE TESTS
     # ------------------------
@@ -433,6 +450,184 @@ class TestInitTempModel(LogicTestCase):
         self._common_assertions(model)
 
 
+"""
+1. parent
+2. parent-child
+3. parent-child-grandchild
+4. parent-child-grandchild-greatgrandchild
+5. parent-child-step_grandchild
+6. parent-child-step_grandchild-grandchild
+7. parent-child-step_grandchild-step_greatgrandchild
+8. parent-child-step_grandchild-greatgrandchild
+9. parent-child1-child2
+10. parent1-parent2
+11. parent1-parent2-child1.1
+12. parent1-parent2-child1.1-child2.1
+13. parent1-parent2-child1.1-grandchild1.1
+14. parent1-parent2-child1.1-step_grandchild1.1
+"""
+
+
+@pytest.mark.django_db(transaction=True)
+class TestGenerateModelDfDict(MindoffTestCase):
+    # ---------------- Acceptance ----------------
+    @pytest.mark.parametrize(
+        "model_info, counts, expected_df_counts",
+        [
+            ([{"name": "ParentModel", "fields": PARENT_FIELDS, "fk": []}], [2], [2]),
+            (
+                [
+                    {"name": "ParentModel", "fields": PARENT_FIELDS, "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": CHILD_FIELDS,
+                        "fk": [("ParentModel",)],
+                    },
+                ],
+                [2, 1],
+                [2, 2],
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "scenario, exclude_columns, modify_rows",
+        [
+            ("col_exact_accepts", [], []),
+            (
+                "col_removed_accepts",
+                [["nickname"], ["description"], [], ["nickname"]],
+                [],
+            ),
+            (
+                "col_modified_accepts",
+                [],
+                [
+                    {0: {"description": "modified1"}},
+                    {1: {"description": "modified2"}},
+                ],
+            ),
+            (
+                "col_modified_removed_accepts",
+                [["nickname"], ["description"], [], ["nickname"]],
+                [{}, {0: {"name": "modified3"}}],
+            ),
+        ],
+    )
+    def test_generate_model_df_dict_acceptance(
+        self,
+        model_info,
+        counts,
+        expected_df_counts,
+        scenario,
+        exclude_columns,
+        modify_rows,
+    ):
+        models_list = self._create_models(model_info)
+        df_dict = self.generate_model_dfs(
+            models=models_list,
+            exclude_columns=exclude_columns,
+            modify=modify_rows,
+            counts=counts,
+        )
+
+        for idx, (model, df) in enumerate(df_dict.items()):
+            _validate_columns(
+                model, df, exclude_columns[idx] if exclude_columns else None
+            )
+            _validate_rows(df, idx, expected_df_counts[idx], modify_rows)
+            _validate_foreign_keys(df_dict)
+
+    def _create_models(self, models_info):
+        app_name = self.init_temp_app()
+        created_models_list = []
+        created_models_dict = {}
+
+        for node in models_info:
+            fk_resolved = [
+                (app_name, created_models_dict[fk_name].__name__)
+                for fk_name, in node["fk"]
+            ]
+            model_cls = self.init_temp_model(
+                model_name=node["name"],
+                app_name=app_name,
+                fields=node["fields"],
+                foreign_keys=fk_resolved,
+            )
+            created_models_dict[node["name"]] = model_cls
+            created_models_list.append(model_cls)
+
+        return created_models_list
+
+
 # =================================================================
 # 🧩 SUB FUNCTIONS
 # =================================================================
+def _validate_columns(model, df, exclude_columns):
+    for field in model._meta.concrete_fields:
+        field_name = field.db_column or field.name
+        if exclude_columns:
+            assert exclude_columns not in df.columns
+            if field_name not in exclude_columns:
+                assert field_name in df.columns
+        else:
+            assert field_name in df.columns
+
+
+def _validate_rows(df, idx, expected_count, modify_rows):
+    assert expected_count == df.height
+    modify_assert_count = 0
+
+    if len(modify_rows) > idx and modify_rows[idx]:
+        for row_idx, modified_info in modify_rows[idx].items():
+            for col, expected in modified_info.items():
+                actual = df[row_idx, col]
+                assert (
+                    actual == expected
+                ), f"Row {row_idx}, col {col}: {actual} != {expected}"
+                modify_assert_count += 1
+    else:
+        modify_assert_count += 1
+
+    assert modify_assert_count > 0, "modified rows were not asserted"
+
+
+def _validate_foreign_keys(df_dict):
+    model_fk_dict = _extract_fk_dict(df_dict)
+    _assert_shared_columns_unique(model_fk_dict)
+
+
+def _extract_fk_dict(df_dict):
+    result = {}
+
+    for model, df in df_dict.items():
+        model_info = {}
+
+        # --- Primary key ---
+        pk_field = model._meta.pk
+        pk_col = pk_field.db_column or pk_field.attname
+        if pk_col in df.columns:
+            model_info[pk_col] = df[pk_col].to_list()
+
+        # --- Foreign keys ---
+        for field in model._meta.get_fields():
+            if isinstance(field, ForeignKey):
+                fk_col = field.db_column or field.column
+                if fk_col in df.columns:
+                    model_info[fk_col] = df[fk_col].to_list()
+
+        result[model] = model_info
+
+    return result
+
+
+def _assert_shared_columns_unique(fk_data):
+    for model, fk_dict in fk_data.items():
+        for fk_col, fk_list in fk_dict.items():
+            current_fk_list = set(fk_list)
+            for iter_model, iter_fk_dict in fk_data.items():
+                for iter_fk_col, iter_fk_list in fk_dict.items():
+                    if fk_col == iter_fk_col:
+                        target_fk_list = set(iter_fk_list)
+                        assert (
+                            current_fk_list == target_fk_list
+                        ), f"{fk_col} does not match between {model.__name__} and {iter_model.__name__}"

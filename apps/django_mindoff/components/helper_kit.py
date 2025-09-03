@@ -1,10 +1,28 @@
 import inspect
 import traceback
 import os
+import importlib
 from pathlib import Path
 from django.conf import settings
 from types import SimpleNamespace
-from _helper_kit import file_guardian
+from ._helper_kit import file_guardian
+
+
+def get_app_module_path(app_name: str) -> str:
+    from .response_kit import mo_response_kit
+
+    @mo_response_kit.response_guardian
+    def _impl(app_name: str) -> str:
+        for path in settings.INSTALLED_APPS:
+            if path.rsplit(".", 1)[-1] == app_name:
+                try:
+                    importlib.import_module(path)
+                    return path
+                except ImportError:
+                    continue
+        raise ValueError(f"App '{app_name}' not found in INSTALLED_APPS.")
+
+    return _impl(app_name)
 
 
 def get_exact_traceback(skip: int | None = None) -> str:

@@ -30,7 +30,7 @@ from apps.django_mindoff.components.response_kit import (
     load_responses_csv,
     MINDOFF_RESPONSES,
 )
-from django_mindoff.components.helpers.tdd_fixtures import LogicTestCase
+from django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
 
 
 CSV_HEADERS_VALID = ["code", "title", "description", "status"]
@@ -80,7 +80,7 @@ CSV_DATA_INVALID_STATUS_REJECT = [
 ]
 
 
-class TestLoadResponsesCSV(LogicTestCase):
+class TestLoadResponsesCSV(MindoffTestCase):
 
     # ================= VALID TEST CASES =================
     def test_load_csv_with_data_valid(self):

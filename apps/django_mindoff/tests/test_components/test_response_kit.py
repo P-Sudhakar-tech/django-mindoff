@@ -21,7 +21,7 @@ import io
 import uuid
 from pathlib import Path
 from django.conf import settings as django_settings
-from apps.django_mindoff.components.helpers.tdd_fixtures import LogicTestCase
+from apps.django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
 from typeguard import TypeCheckError
 from django.http import HttpResponse, FileResponse
 from apps.django_mindoff.components.response_kit import (
@@ -50,7 +50,7 @@ CSV_DATA_VALID = [
 ]
 
 
-class TestJsonResponse(LogicTestCase):
+class TestJsonResponse(MindoffTestCase):
     @pytest.mark.parametrize("is_debug", [True, False])
     @pytest.mark.parametrize(
         "exception",
@@ -184,7 +184,7 @@ class TestJsonResponse(LogicTestCase):
             writer.writerows(data)
 
 
-class TestFileResponse(LogicTestCase):
+class TestFileResponse(MindoffTestCase):
     def test_from_disk_valid(self, tmp_path):
         test_file = tmp_path / "sample.txt"
         test_file.write_text("hello world")
@@ -221,7 +221,7 @@ class TestFileResponse(LogicTestCase):
         assert response["status"] == "fail"
 
 
-class TestHtmlResponse(LogicTestCase):
+class TestHtmlResponse(MindoffTestCase):
     @pytest.mark.parametrize(
         "html, status_code",
         [
@@ -239,7 +239,7 @@ class TestHtmlResponse(LogicTestCase):
         assert response.content == html.encode()
 
 
-class TestTextResponse(LogicTestCase):
+class TestTextResponse(MindoffTestCase):
     @pytest.mark.parametrize(
         "text, status_code",
         [
@@ -256,7 +256,7 @@ class TestTextResponse(LogicTestCase):
         assert response.content == text.encode()
 
 
-class TestExceptionHandler(LogicTestCase):
+class TestExceptionHandler(MindoffTestCase):
     def test_exception_handler_valid(self, rf):
         @mo_response_kit.response_guardian
         def view(request):
