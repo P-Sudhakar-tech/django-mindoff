@@ -18,9 +18,9 @@
 
 import pytest
 import polars as pl
+import uuid
 from django.db import models
-from model_bakery import baker
-from apps.django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
+from apps.django_mindoff.components.tdd_kit import MindoffTestCase
 from apps.django_mindoff.components.crud_kit import mo_crud_kit
 
 
@@ -30,7 +30,20 @@ class TestColumnValidationCrud(MindoffTestCase):
         "case_name, remove_columns, modify_rows, is_partial, expected_status",
         [
             # ---------------- Column Validation ----------------
-            ("col_exact_accepts", [], [], True, "ok"),
+            (
+                "col_exact_accepts",
+                [],
+                [
+                    {},
+                    {},
+                    {
+                        0: {"chapter_id": None},
+                        1: {"chapter_id": None},
+                    },
+                ],
+                True,
+                "ok",
+            ),
             ("col_exact_accepts", [], [], False, "ok"),
             (
                 "col_extra_removed_accepts",
@@ -96,7 +109,7 @@ class TestColumnValidationCrud(MindoffTestCase):
             (
                 "fk_invalid_partial_rejects",
                 [],
-                [{0: {"author_id": 999}}],
+                [{0: {"author_id": uuid.UUID}}],
                 True,
                 "partial_ok",
             ),
@@ -115,8 +128,8 @@ class TestColumnValidationCrud(MindoffTestCase):
     def test_validation_cases(
         self, case_name, remove_columns, modify_rows, is_partial, expected_status
     ):
-        app_name = self.init_temp_app()
-        author_model = self.init_temp_model(
+        app_name = self.mo_mock_app()
+        author_model = self.mo_mock_model(
             model_name="AuthorModel",
             app_name=app_name,
             fields={
@@ -124,7 +137,7 @@ class TestColumnValidationCrud(MindoffTestCase):
             },
         )
 
-        book_model = self.init_temp_model(
+        book_model = self.mo_mock_model(
             model_name="BookModel",
             app_name=app_name,
             fields={
@@ -134,7 +147,7 @@ class TestColumnValidationCrud(MindoffTestCase):
             foreign_keys=[(author_model._meta.app_label, author_model.__name__)],
         )
 
-        chapter_model = self.init_temp_model(
+        chapter_model = self.mo_mock_model(
             model_name="ChapterModel",
             app_name=app_name,
             fields={
@@ -146,15 +159,21 @@ class TestColumnValidationCrud(MindoffTestCase):
                 (book_model._meta.app_label, book_model.__name__),
             ],
         )
-        df_dict = self.generate_model_dfs(
+        df_dict = self.mo_mock_model_dfs(
             models=[author_model, book_model, chapter_model],
             exclude_columns=remove_columns,
             modify=modify_rows,
             counts=[2, 1, 1],
         )
-        print(df_dict)
+        status, _, invalid_dfs = mo_crud_kit.validate_and_create(
+            df_dict, is_partial=is_partial
+        )
+        print(status)
+        print(invalid_dfs)
+        invalid_df = list(invalid_dfs.values())[0]
+        error_info = invalid_df["__error__info"].to_list()
+        print(error_info)
         assert True == False
         # run your validator logic here and assert expected_status
         # result = run_validation(df_dict, partial=is_partial)
-        # status, _, _ = mo_crud_kit.create(df_dict, is_partial=is_partial)
         # assert result.status == expected_status

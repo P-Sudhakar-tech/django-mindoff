@@ -19,9 +19,10 @@ import csv
 import logging
 import io
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from django.conf import settings as django_settings
-from apps.django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
+from apps.django_mindoff.components.tdd_kit import MindoffTestCase
 from typeguard import TypeCheckError
 from django.http import HttpResponse, FileResponse
 from apps.django_mindoff.components.response_kit import (
@@ -51,6 +52,13 @@ CSV_DATA_VALID = [
 
 
 class TestJsonResponse(MindoffTestCase):
+    def setup_method(self, method):
+        self._original_responses = deepcopy(MINDOFF_RESPONSES)
+
+    def teardown_method(self, method):
+        MINDOFF_RESPONSES.clear()
+        MINDOFF_RESPONSES.update(self._original_responses)
+
     @pytest.mark.parametrize("is_debug", [True, False])
     @pytest.mark.parametrize(
         "exception",

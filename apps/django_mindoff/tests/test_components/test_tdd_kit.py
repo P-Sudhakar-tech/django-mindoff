@@ -1,35 +1,28 @@
 import pytest
+import copy
 from django.db import models
 from django.apps import apps
 from django.conf import settings
 from django.db.models import ForeignKey
-from django_mindoff.components.helpers.tdd_fixtures import MindoffTestCase
+from django_mindoff.components.tdd_kit import MindoffTestCase
 
 # ------------------------
 # ⚓ CONSTANTS
 # ------------------------
-PARENT_FIELDS = {
+FIELDS = {
     "name": models.CharField(max_length=50),
     "nickname": models.CharField(max_length=50, null=True, blank=True),  # optional
     "description": models.TextField(null=True, blank=True),  # optional
 }
 
-CHILD_FIELDS = {
-    "name": models.CharField(max_length=50),
-    "nickname": models.CharField(max_length=50, null=True, blank=True),
-    "description": models.TextField(null=True, blank=True),
-}
-
-GRANDCHILD_FIELDS = {
-    "name": models.CharField(max_length=50),
-    "nickname": models.CharField(max_length=50, null=True, blank=True),
-    "description": models.TextField(null=True, blank=True),
-}
 snake_case_regex = r"^[a-z0-9_]+$"
 pascal_case_regex = r"^[A-Z][a-zA-Z0-9]+$"
 
 
-class TestInitTempApp(MindoffTestCase):
+# =================================================================
+#  🚂 MAIN CLASSES
+# =================================================================
+class TestMockApp(MindoffTestCase):
     # ------------------------
     # ✅ ACCEPTANCE TESTS
     # ------------------------
@@ -39,8 +32,8 @@ class TestInitTempApp(MindoffTestCase):
         when none is given and can create multiple auto-generated apps sequentially
         without name collisions.
         """
-        app1 = self.init_temp_app()
-        app2 = self.init_temp_app()
+        app1 = self.mo_mock_app()
+        app2 = self.mo_mock_app()
         self.asserts.assertNotEqual(app1, app2)
         self._common_assertions(app1)
         self._common_assertions(app2)
@@ -50,9 +43,9 @@ class TestInitTempApp(MindoffTestCase):
         2. **Defined App Creation** — Creates an app with a user-specified name
         and can create multiple defined apps without name collisions.
         """
-        auto_app = self.init_temp_app()
-        defined_app1 = self.init_temp_app(app_name="custom_app")
-        defined_app2 = self.init_temp_app(app_name="customapp")
+        auto_app = self.mo_mock_app()
+        defined_app1 = self.mo_mock_app(app_name="custom_app")
+        defined_app2 = self.mo_mock_app(app_name="customapp")
         self.asserts.assertIn("custom_app", apps.app_configs)
         self._common_assertions(auto_app)
         self._common_assertions(defined_app1)
@@ -82,7 +75,7 @@ class TestInitTempApp(MindoffTestCase):
         bad_names = ["invalid@app", "123startdigit", "apps.app_name"]
         for name in bad_names:
             with self.asserts.assertRaises(Exception):
-                self.init_temp_app(app_name=name)
+                self.mo_mock_app(app_name=name)
 
     def test_app_name_collision(self):
         """
@@ -90,9 +83,9 @@ class TestInitTempApp(MindoffTestCase):
         exists in `INSTALLED_APPS` and Creating an auto-generated app when the
         generated name already exists.
         """
-        _ = self.init_temp_app(app_name="duplicate_app")
+        _ = self.mo_mock_app(app_name="duplicate_app")
         with self.asserts.assertRaises(Exception):
-            self.init_temp_app(app_name="duplicate_app")
+            self.mo_mock_app(app_name="duplicate_app")
 
     def test_invalid_app_path(self):
         """
@@ -100,29 +93,29 @@ class TestInitTempApp(MindoffTestCase):
         allowed namespace (e.g., `../../evil`).
         """
         with self.asserts.assertRaises(Exception):
-            self.init_temp_app(app_name="apps/app_name/evil")
+            self.mo_mock_app(app_name="apps/app_name/evil")
 
     def test_concurrent_creation_same_name(self):
-        self.init_temp_app("temp_app_concurrent")
+        self.mo_mock_app("temp_app_concurrent")
         with self.asserts.assertRaises(ValueError):
-            self.init_temp_app("temp_app_concurrent")
+            self.mo_mock_app("temp_app_concurrent")
 
     # ------------------------
     # 🚧 BOUNDARY TESTS
     # ------------------------
     def test_minimum_length_name(self):
-        name = self.init_temp_app("a")
+        name = self.mo_mock_app("a")
         self.asserts.assertIn(name, apps.app_configs)
 
     def test_maximum_length_name(self):
         name = "x" * 100
-        created_name = self.init_temp_app(name)
+        created_name = self.mo_mock_app(name)
         self.asserts.assertIn(created_name, apps.app_configs)
 
     def test_case_sensitivity_normalization(self):
-        app1 = self.init_temp_app("MixedCaseApp")
-        app2 = self.init_temp_app("Mixed Case app")
-        app3 = self.init_temp_app("mixedCase App")
+        app1 = self.mo_mock_app("MixedCaseApp")
+        app2 = self.mo_mock_app("Mixed Case app")
+        app3 = self.mo_mock_app("mixedCase App")
         self.asserts.assertEqual(app1, "mixedcaseapp")
         self.asserts.assertEqual(app2, "mixed_case_app")
         self.asserts.assertEqual(app3, "mixedcase_app")
@@ -131,23 +124,23 @@ class TestInitTempApp(MindoffTestCase):
         apps.app_configs["test_app"] = object()
         for i in range(1, 10000):
             apps.app_configs[f"test_app_{i}"] = object()
-        name = self.init_temp_app()
+        name = self.mo_mock_app()
         self.asserts.assertTrue(name.startswith("test_app_"))
 
     # ------------------------
     # 🌀 ANOMALY TESTS
     # ------------------------
     def test_empty_string_name_fallbacks_to_auto(self):
-        name = self.init_temp_app("")
+        name = self.mo_mock_app("")
         self.asserts.assertTrue(name.startswith("test_app"))
 
     def test_exceeds_max_length_throws_error(self):
         with self.asserts.assertRaises(Exception):
-            self.init_temp_app("x" * 1024)
+            self.mo_mock_app("x" * 1024)
 
 
 @pytest.mark.django_db(transaction=True)
-class TestInitTempModel(MindoffTestCase):
+class TestMockModel(MindoffTestCase):
     # ------------------------
     # ✅ ACCEPTANCE TESTS
     # ------------------------
@@ -157,8 +150,8 @@ class TestInitTempModel(MindoffTestCase):
         snake_case table name with no parameter input and Works when called multiple times
         sequentially with unique model name generation
         """
-        model1 = self.init_temp_model()
-        model2 = self.init_temp_model()
+        model1 = self.mo_mock_model()
+        model2 = self.mo_mock_model()
         self.asserts.assertNotEqual(
             model1.__name__, model2.__name__, msg="Model Name duplication Found"
         )
@@ -176,10 +169,10 @@ class TestInitTempModel(MindoffTestCase):
         """
         defined_name_1 = "TestModel"
         defined_name_2 = "Test2Model"
-        defined_model_1 = self.init_temp_model(model_name=defined_name_1)
-        defined_model_2 = self.init_temp_model(model_name=defined_name_2)
-        auto_model_1 = self.init_temp_model()
-        auto_model_2 = self.init_temp_model()
+        defined_model_1 = self.mo_mock_model(model_name=defined_name_1)
+        defined_model_2 = self.mo_mock_model(model_name=defined_name_2)
+        auto_model_1 = self.mo_mock_model()
+        auto_model_2 = self.mo_mock_model()
         model_names_dict = {
             defined_model_1.__name__,
             defined_model_2.__name__,
@@ -219,15 +212,15 @@ class TestInitTempModel(MindoffTestCase):
         - Link one of the Foreign key to Other Permanent Model from same app
         - Link one of the Foreign key to Other Permanent Model from another app
         """
-        self.init_temp_app(app_name="temp_otherapp")
-        self.init_temp_app(app_name="another.temp_app")
-        temp_other_auto = self.init_temp_model(app_name="temp_otherapp")
-        temp_other_defined = self.init_temp_model(
+        self.mo_mock_app(app_name="temp_otherapp")
+        self.mo_mock_app(app_name="another.temp_app")
+        temp_other_auto = self.mo_mock_model(app_name="temp_otherapp")
+        temp_other_defined = self.mo_mock_model(
             app_name="temp_app", model_name="DefinedOtherModel"
         )
         perm_same_app = apps.get_model("auth", "User")
         perm_other_app = apps.get_model("contenttypes", "ContentType")
-        model = self.init_temp_model(
+        model = self.mo_mock_model(
             foreign_keys=[
                 (temp_other_auto._meta.app_label, temp_other_auto.__name__),
                 (temp_other_defined._meta.app_label, temp_other_defined.__name__),
@@ -236,7 +229,7 @@ class TestInitTempModel(MindoffTestCase):
             ]
         )
         fk_fields = [
-            f for f in model._meta.get_fields() if isinstance(f, models.ForeignKey)
+            f for f in model._meta.concrete_fields if isinstance(f, models.ForeignKey)
         ]
         self.asserts.assertEqual(
             len(fk_fields), 4, msg="Not All Foreign key fields are created"
@@ -284,7 +277,7 @@ class TestInitTempModel(MindoffTestCase):
                 null=True, blank=True, default=10, unique=True, db_column="int_column"
             ),
         }
-        model = self.init_temp_model(fields=fields)
+        model = self.mo_mock_model(fields=fields)
         attrs_to_check = [
             "max_length",
             "null",
@@ -331,7 +324,7 @@ class TestInitTempModel(MindoffTestCase):
             pascal_case_regex,
             msg="Model Name Not Pascal Case",
         )
-        for field in model._meta.get_fields():
+        for field in model._meta.concrete_fields:
             if hasattr(field, "db_column") and field.db_column:
                 self.asserts.assertRegex(
                     model._meta.db_table,
@@ -345,46 +338,44 @@ class TestInitTempModel(MindoffTestCase):
     def test_string_naming_errors(self):
         # 1. ModelName is not PascalCase
         with pytest.raises(AssertionError):
-            self.init_temp_model(model_name="notPascalModel")
+            self.mo_mock_model(model_name="notPascalModel")
         # 2. TableName is not snake_case
         with pytest.raises(AssertionError):
-            self.init_temp_model(table_name="NotSnakeCase")
+            self.mo_mock_model(table_name="NotSnakeCase")
         # 3. ModelName does not end with 'Model'
         with pytest.raises(AssertionError):
-            self.init_temp_model(model_name="Test")
+            self.mo_mock_model(model_name="Test")
         # 4. ModelName contains invalid chars (e.g. starting with number, spaces, special chars)
         invalid_names = ["123Model", "My Model", "Model$", "Model!"]
         for name in invalid_names:
             with pytest.raises(AssertionError):
-                self.init_temp_model(model_name=name)
+                self.mo_mock_model(model_name=name)
 
     def test_existential_crisis_errors(self):
         # 1. App label does not exist
         with pytest.raises(ValueError):
-            self.init_temp_model(app_name="nonexistentapp")
+            self.mo_mock_model(app_name="nonexistentapp")
         # 2. Duplicate model name already registered
-        self.init_temp_model(model_name="DuplicateModel")
+        self.mo_mock_model(model_name="DuplicateModel")
         with pytest.raises(ValueError):
-            self.init_temp_model(model_name="DuplicateModel")
+            self.mo_mock_model(model_name="DuplicateModel")
         # 3. FK model in fk_models_list does not exist
         with pytest.raises(LookupError):
-            self.init_temp_model(foreign_keys=[("nonexistentapp", "NonexistentModel")])
+            self.mo_mock_model(foreign_keys=[("nonexistentapp", "NonexistentModel")])
 
     def test_fk_model_string_path_invalid(self):
-        self.init_temp_app(app_name="directory.temp_app")
-        self.init_temp_model(model_name="DuplicateModel", app_name="temp_app")
+        self.mo_mock_app(app_name="directory.temp_app")
+        self.mo_mock_model(model_name="DuplicateModel", app_name="temp_app")
         with pytest.raises(LookupError):
-            self.init_temp_model(
-                foreign_keys=[("directory.temp_app", "DuplicateModel")]
-            )
+            self.mo_mock_model(foreign_keys=[("directory.temp_app", "DuplicateModel")])
 
     def test_field_related_errors(self):
         # 1. Duplicate field names in fields
         fields1 = {"field_1": models.CharField(max_length=10)}
         fields2 = {"field_1": models.IntegerField()}  # duplicate key 'field1'
-        model_class = self.init_temp_model(fields={**fields1, **fields2})
+        model_class = self.mo_mock_model(fields={**fields1, **fields2})
         field_1_fields = [
-            f for f in model_class._meta.get_fields() if f.name == "field_1"
+            f for f in model_class._meta.concrete_fields if f.name == "field_1"
         ]
         self.asserts.assertEqual(
             len(field_1_fields),
@@ -405,7 +396,7 @@ class TestInitTempModel(MindoffTestCase):
                 super().__init__(*args, **kwargs)
 
         with pytest.raises(TypeError):
-            self.init_temp_model(fields={"bad_field": BadField(max_length=10)})
+            self.mo_mock_model(fields={"bad_field": BadField(max_length=10)})
 
     # ------------------------
     # 🚧 BOUNDARY TESTS
@@ -414,7 +405,7 @@ class TestInitTempModel(MindoffTestCase):
         max_length = getattr(settings, "DB_TABLE_NAME_MAX_LENGTH", 63)
         long_table_name = "a" * max_length
         model_name = "TestModel"
-        model = self.init_temp_model(model_name=model_name, table_name=long_table_name)
+        model = self.mo_mock_model(model_name=model_name, table_name=long_table_name)
         self.asserts.assertEqual(len(model._meta.db_table) - 4, max_length)
 
     def test_dynamic_creator_allows_10_plus_fk_fields(self):
@@ -422,70 +413,286 @@ class TestInitTempModel(MindoffTestCase):
         fk_models = []
         for i in range(10):
             model_name = f"TempModel{i}Model"
-            temp_model = self.init_temp_model(model_name=model_name)
+            temp_model = self.mo_mock_model(model_name=model_name)
             fk_models.append((temp_model._meta.app_label, temp_model.__name__))
-        model = self.init_temp_model(foreign_keys=fk_models)
+        model = self.mo_mock_model(foreign_keys=fk_models)
         fk_fields = [
-            f for f in model._meta.get_fields() if isinstance(f, models.ForeignKey)
+            f for f in model._meta.concrete_fields if isinstance(f, models.ForeignKey)
         ]
         self.asserts.assertEqual(len(fk_fields), 10)
 
     def test_charfield_max_length_exactly_255(self):
         fields = {"char255": models.CharField(max_length=255)}
-        model = self.init_temp_model(fields=fields)
+        model = self.mo_mock_model(fields=fields)
         char_field = model._meta.get_field("char255")
         self.asserts.assertEqual(char_field.max_length, 255)
 
     def test_auto_generated_table_name_length_at_max_limit(self):
         max_length = getattr(settings, "DB_TABLE_NAME_MAX_LENGTH", 63)
         model_name = "A" * 63 + "Model"
-        model = self.init_temp_model(model_name=model_name)
+        model = self.mo_mock_model(model_name=model_name)
         self.asserts.assertEqual(len(model._meta.db_table) - 4, max_length)
 
     # ------------------------
     # 🌀 ANOMALY TESTS
     # ------------------------
     def test_app_name_empty_autofills_current_app(self):
-        model = self.init_temp_model(app_name="")
+        model = self.mo_mock_model(app_name="")
         self._common_assertions(model)
 
 
-"""
-1. parent
-2. parent-child
-3. parent-child-grandchild
-4. parent-child-grandchild-greatgrandchild
-5. parent-child-step_grandchild
-6. parent-child-step_grandchild-grandchild
-7. parent-child-step_grandchild-step_greatgrandchild
-8. parent-child-step_grandchild-greatgrandchild
-9. parent-child1-child2
-10. parent1-parent2
-11. parent1-parent2-child1.1
-12. parent1-parent2-child1.1-child2.1
-13. parent1-parent2-child1.1-grandchild1.1
-14. parent1-parent2-child1.1-step_grandchild1.1
-"""
-
-
 @pytest.mark.django_db(transaction=True)
-class TestGenerateModelDfDict(MindoffTestCase):
+class TestMockModelDfs(MindoffTestCase):
     # ---------------- Acceptance ----------------
     @pytest.mark.parametrize(
         "model_info, counts, expected_df_counts",
         [
-            ([{"name": "ParentModel", "fields": PARENT_FIELDS, "fk": []}], [2], [2]),
+            # 1. Parent only
             (
                 [
-                    {"name": "ParentModel", "fields": PARENT_FIELDS, "fk": []},
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                ],
+                [2],
+                [2],
+            ),
+            # 2. Parent → Child
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
                     {
                         "name": "ChildModel",
-                        "fields": CHILD_FIELDS,
+                        "fields": copy.deepcopy(FIELDS),
                         "fk": [("ParentModel",)],
                     },
                 ],
                 [2, 1],
                 [2, 2],
+            ),
+            # 3. Parent → Child → Grandchild
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "GrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ChildModel",)],
+                    },
+                ],
+                [2, 1, 1],
+                [2, 2, 2],
+            ),
+            # 4. Parent → Child → Grandchild → GreatGrandchild
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "GrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ChildModel",)],
+                    },
+                    {
+                        "name": "GreatGrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("GrandchildModel",)],
+                    },
+                ],
+                [2, 1, 1, 1],
+                [2, 2, 2, 2],
+            ),
+            # 5. Parent → Child → StepGrandchild
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "StepGrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ChildModel",)],
+                    },
+                ],
+                [2, 1, 1],
+                [2, 2, 2],
+            ),
+            # 6. Parent → Child → StepGrandchild → StepGrandchildChild
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "StepGrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ChildModel",)],
+                    },
+                    {
+                        "name": "StepGrandchildChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("StepGrandchildModel",)],
+                    },
+                ],
+                [2, 1, 1, 1],
+                [2, 2, 2, 2],
+            ),
+            # 7. Parent → Child → StepGrandchild → StepGreatGrandchild
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "StepGrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ChildModel",)],
+                    },
+                    {
+                        "name": "StepGreatGrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("StepGrandchildModel",)],
+                    },
+                ],
+                [2, 1, 1, 1],
+                [2, 2, 2, 2],
+            ),
+            # 8. Parent → Child → StepGrandchild → StepGrandchildGreat
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "ChildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "StepGrandchildModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ChildModel",)],
+                    },
+                    {
+                        "name": "StepGrandchildGreatModel",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("StepGrandchildModel",)],
+                    },
+                ],
+                [2, 1, 1, 1],
+                [2, 2, 2, 2],
+            ),
+            # 9. Parent → Child1 → Child2
+            (
+                [
+                    {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "Child1Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("ParentModel",)],
+                    },
+                    {
+                        "name": "Child2Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Child1Model",)],
+                    },
+                ],
+                [2, 1, 1],
+                [2, 2, 2],
+            ),
+            # 10. Parent1 + Parent2
+            (
+                [
+                    {"name": "Parent1Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {"name": "Parent2Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                ],
+                [2, 2],
+                [2, 2],
+            ),
+            # 11. Parent1 + Parent2 → Child11
+            (
+                [
+                    {"name": "Parent1Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {"name": "Parent2Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "Child11Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Parent1Model",)],
+                    },
+                ],
+                [2, 2, 1],
+                [2, 2, 2],
+            ),
+            # 12. Parent1 + Parent2 → Child11 → Child21
+            (
+                [
+                    {"name": "Parent1Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {"name": "Parent2Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "Child11Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Parent1Model",)],
+                    },
+                    {
+                        "name": "Child21Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Child11Model",)],
+                    },
+                ],
+                [2, 2, 1, 1],
+                [2, 2, 2, 2],
+            ),
+            # 13. Parent1 + Parent2 → Child11 → Grandchild11
+            (
+                [
+                    {"name": "Parent1Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {"name": "Parent2Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "Child11Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Parent1Model",)],
+                    },
+                    {
+                        "name": "Grandchild11Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Child11Model",)],
+                    },
+                ],
+                [2, 2, 1, 1],
+                [2, 2, 2, 2],
+            ),
+            # 14. Parent1 + Parent2 → Child11 → StepGrandchild11
+            (
+                [
+                    {"name": "Parent1Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {"name": "Parent2Model", "fields": copy.deepcopy(FIELDS), "fk": []},
+                    {
+                        "name": "Child11Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Parent1Model",)],
+                    },
+                    {
+                        "name": "StepGrandchild11Model",
+                        "fields": copy.deepcopy(FIELDS),
+                        "fk": [("Child11Model",)],
+                    },
+                ],
+                [2, 2, 1, 1],
+                [2, 2, 2, 2],
             ),
         ],
     )
@@ -513,7 +720,7 @@ class TestGenerateModelDfDict(MindoffTestCase):
             ),
         ],
     )
-    def test_generate_model_df_dict_acceptance(
+    def test_mock_model_dfs_acceptance(
         self,
         model_info,
         counts,
@@ -523,7 +730,7 @@ class TestGenerateModelDfDict(MindoffTestCase):
         modify_rows,
     ):
         models_list = self._create_models(model_info)
-        df_dict = self.generate_model_dfs(
+        df_dict = self.mo_mock_model_dfs(
             models=models_list,
             exclude_columns=exclude_columns,
             modify=modify_rows,
@@ -537,8 +744,51 @@ class TestGenerateModelDfDict(MindoffTestCase):
             _validate_rows(df, idx, expected_df_counts[idx], modify_rows)
             _validate_foreign_keys(df_dict)
 
+    # ---------------- Rejection -----------------
+    @pytest.mark.parametrize(
+        "exclude_columns, modify_rows, expected_error",
+        [
+            # 1. Removal of Non Existing Column
+            (
+                [["non_existing_col"]],
+                [],
+                ValueError,
+            ),
+            # 2. Modification of Non Existing Column
+            (
+                [],
+                [{0: {"non_existing_col": "modified"}}],
+                ValueError,
+            ),
+            # 3. Both
+            (
+                [["non_existing_col"]],
+                [{0: {"non_existing_col": "modified"}}],
+                ValueError,
+            ),
+            # 4. Modification of Non Existing Row
+            (
+                [["non_existing_col"]],
+                [{4: {"name": "modified"}}],
+                ValueError,
+            ),
+        ],
+    )
+    def test_mock_model_dfs_rejections(
+        self, exclude_columns, modify_rows, expected_error
+    ):
+        models_list = self._create_models(
+            [
+                {"name": "ParentModel", "fields": copy.deepcopy(FIELDS), "fk": []},
+            ]
+        )
+        with pytest.raises(expected_error):
+            self.mo_mock_model_dfs(
+                models=models_list, exclude_columns=exclude_columns, modify=modify_rows
+            )
+
     def _create_models(self, models_info):
-        app_name = self.init_temp_app()
+        app_name = self.mo_mock_app()
         created_models_list = []
         created_models_dict = {}
 
@@ -547,7 +797,7 @@ class TestGenerateModelDfDict(MindoffTestCase):
                 (app_name, created_models_dict[fk_name].__name__)
                 for fk_name, in node["fk"]
             ]
-            model_cls = self.init_temp_model(
+            model_cls = self.mo_mock_model(
                 model_name=node["name"],
                 app_name=app_name,
                 fields=node["fields"],
@@ -609,7 +859,7 @@ def _extract_fk_dict(df_dict):
             model_info[pk_col] = df[pk_col].to_list()
 
         # --- Foreign keys ---
-        for field in model._meta.get_fields():
+        for field in model._meta.concrete_fields:
             if isinstance(field, ForeignKey):
                 fk_col = field.db_column or field.column
                 if fk_col in df.columns:

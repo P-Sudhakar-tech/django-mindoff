@@ -35,7 +35,7 @@ class _DfDictValidInvalidSplitter:
         self, df_dict: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]]
     ):
         self.df_dict = self._normalize_dfs(df_dict)
-        self.relations = self._build_relations(self.df_dict.keys())
+        self.relations = self._build_relations(list(self.df_dict.keys()))
 
     def run(self) -> Tuple[
         Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
@@ -49,23 +49,24 @@ class _DfDictValidInvalidSplitter:
         """Ensure all DataFrames have __error__info column."""
         normalized = {}
         for model, df in df_dict.items():
-            if self.ERROR_COL not in df.schema:
-                df = df.with_columns(pl.lit(None).alias(self.ERROR_COL))
+            if ERROR_COL not in df.schema:
+                df = df.with_columns(pl.lit(None).alias(ERROR_COL))
             normalized[model] = df
         return normalized
 
-    def _build_relations(self, models: List[Type[models.Model]]):
+    def _build_relations(self, models_list: List[Type[models.Model]]):
         """Extract (child, fk_col, parent, pk_col) for FK/OneToOne relations."""
         relations = []
-        for model in models:
-            for f in model._meta.get_fields():
+        for model in models_list:
+            for f in model._meta.concrete_fields:
                 if isinstance(f, (models.ForeignKey, models.OneToOneField)):
                     relations.append(
                         (
                             model,
-                            f.column,
+                            f.db_column or f.name,
                             f.related_model,
-                            f.related_model._meta.pk.name,
+                            f.related_model._meta.pk.db_column
+                            or f.related_model._meta.pk.name,
                         )
                     )
         return relations
@@ -73,15 +74,17 @@ class _DfDictValidInvalidSplitter:
     def _collect_initial_invalid_ids(self):
         """Collect initial invalid IDs from rows with non-null __error__info."""
         return {
-            m: df.filter(pl.col(self.ERROR_COL).is_not_null())
-            .select(pl.col(m._meta.pk.name))
+            m: df.filter(pl.col(ERROR_COL).is_not_null())
+            .select(pl.col(m._meta.pk.db_column or m._meta.pk.name))
             .unique()
             for m, df in self.df_dict.items()
         }
 
     def _propagate_invalid_ids(self, invalid_ids):
         """Cascade invalid IDs across parent-child relations."""
-        queue = [m for m, ids in invalid_ids.items() if not ids.is_empty()]
+        queue = [
+            m for m, ids in invalid_ids.items() if not mo_polars_kit.is_df_empty(ids)
+        ]
         visited = set()
 
         while queue:
@@ -106,41 +109,53 @@ class _DfDictValidInvalidSplitter:
         """Mark parent IDs invalid if child rows are invalid."""
         new_invalid = (
             self.df_dict[child]
-            .join(invalid_ids[child], on=child._meta.pk.name, how="inner")
+            .join(
+                invalid_ids[child],
+                on=child._meta.pk.db_column or child._meta.pk.name,
+                how="inner",
+            )
             .select(pl.col(fk_col).alias(pk_col))
             .unique()
         )
-        before = invalid_ids[parent].height
+        before_empty = mo_polars_kit.is_df_empty(invalid_ids[parent])
         invalid_ids[parent] = invalid_ids[parent].vstack(new_invalid).unique()
-        return [parent] if invalid_ids[parent].height > before else []
+        return (
+            [parent]
+            if not before_empty and not mo_polars_kit.is_df_empty(new_invalid)
+            else []
+        )
 
     def _propagate_to_child(self, invalid_ids, child, parent, fk_col, pk_col):
         """Mark child IDs invalid if parent rows are invalid."""
         new_invalid = (
             self.df_dict[child]
             .join(invalid_ids[parent], left_on=fk_col, right_on=pk_col, how="inner")
-            .select(pl.col(child._meta.pk.name))
+            .select(pl.col(child._meta.pk.db_column or child._meta.pk.name))
             .unique()
         )
-        before = invalid_ids[child].height
+
+        before_empty = mo_polars_kit.is_df_empty(invalid_ids[child])
         invalid_ids[child] = invalid_ids[child].vstack(new_invalid).unique()
-        return [child] if invalid_ids[child].height > before else []
+        return (
+            [child]
+            if not before_empty and not mo_polars_kit.is_df_empty(new_invalid)
+            else []
+        )
 
     def _split_valid_invalid(self, invalid_ids):
         """Split into valid and invalid dfs based on invalid IDs."""
         valid_dfs, invalid_dfs = {}, {}
         for m, df in self.df_dict.items():
-            pk = m._meta.pk.name
+            pk = m._meta.pk.db_column or m._meta.pk.name
             bad_ids = invalid_ids[m]
-
-            if bad_ids.is_empty():
+            if mo_polars_kit.is_df_empty(bad_ids):
                 valid_dfs[m] = df
                 invalid_dfs[m] = df.filter(
                     pl.lit(False)
                 )  # empty frame with same schema
             else:
                 df_invalid = df.join(bad_ids, on=pk, how="inner")
-                df_valid = df.join(bad_ids, on=pk, how="left_anti")
+                df_valid = df.join(bad_ids, on=pk, how="anti")
                 valid_dfs[m], invalid_dfs[m] = df_valid, df_invalid
 
         return valid_dfs, invalid_dfs
@@ -151,7 +166,7 @@ class _DfDictValidInvalidSplitter:
 # --------------
 @mo_response_kit.response_guardian
 @typechecked
-def create(
+def validate_and_create(
     df_dict: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
     is_partial: bool = False,
 ) -> Tuple[str, Dict, Dict]:
@@ -184,6 +199,8 @@ def create(
     valid_dfs, invalid_dfs = df_dict_valid_invalid_splitter.run()
 
     # Step 4: Decide partial save
+    if mo_polars_kit.is_all_dict_df_empty(valid_dfs):
+        return "fail", valid_dfs, invalid_dfs
     if not mo_polars_kit.is_all_dict_df_empty(invalid_dfs):
         if not is_partial:
             return "fail", valid_dfs, invalid_dfs
@@ -198,5 +215,5 @@ def create(
 
 
 mo_crud_kit = SimpleNamespace(
-    create=create,
+    validate_and_create=validate_and_create,
 )

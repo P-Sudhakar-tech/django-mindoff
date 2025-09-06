@@ -751,9 +751,9 @@ class MindoffValidator:
             is_aggregate=is_aggregate,
         )
 
-    # Custom
+    # ensure
 
-    def custom(
+    def ensure(
         self,
         check: Union[bool, Callable[[], bool]],
         *,
@@ -766,11 +766,11 @@ class MindoffValidator:
             ok = bool(check() if callable(check) else check)
         except Exception as e:
             ok = False
-            msg = msg or f"Custom check error: {e}"
-        message = msg or "Custom check failed"
+            msg = msg or f"ensure check error: {e}"
+        message = msg or "ensure check failed"
         return self._record_or_raise(
             ok=ok,
-            fn="custom",
+            fn="ensure",
             exc_type=exc_type,
             message=message,
             is_exception=is_exception,
@@ -806,7 +806,10 @@ class MindoffValidator:
                 "VALIDATION_ERR", category="danger", **response
             )
         finally:
-            self._errors.clear()
+            self.reset()
+
+    def reset(self):
+        self._errors.clear()
 
     # ---- internals ----
     def _record_or_raise(

@@ -21,7 +21,7 @@ class ForeignKeyValidator:
     def _validate_model_foreign_keys(self, model, df):
         if mo_polars_kit.is_df_empty(df):
             return df
-        for field in model._meta.get_fields():
+        for field in model._meta.concrete_fields:
             error_message = f"Invalid foreign key to {model.__name__}"
             if ERROR_COL not in df.columns:
                 df = df.with_columns(pl.lit(None).cast(pl.Utf8).alias(ERROR_COL))

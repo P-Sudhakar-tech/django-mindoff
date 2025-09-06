@@ -1,11 +1,21 @@
 import inspect
 import traceback
 import os
+import re
 import importlib
 from pathlib import Path
 from django.conf import settings
 from types import SimpleNamespace
 from ._helper_kit import file_guardian
+from django.apps import apps
+
+
+# ------------------------
+# String Manipulation Helpers
+# ------------------------
+def pascal_to_snake(name: str) -> str:
+    """Convert PascalCase to snake_case."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
 def get_app_module_path(app_name: str) -> str:
@@ -23,6 +33,20 @@ def get_app_module_path(app_name: str) -> str:
         raise ValueError(f"App '{app_name}' not found in INSTALLED_APPS.")
 
     return _impl(app_name)
+
+
+def get_current_app_name():
+    """Try to detect the Django app name from the calling file path."""
+    caller_file = inspect.stack()[2].filename
+    caller_file = os.path.abspath(caller_file)
+
+    for app_config in apps.get_app_configs():
+        if os.path.commonpath(
+            [caller_file, os.path.abspath(app_config.path)]
+        ) == os.path.abspath(app_config.path):
+            return app_config.label
+
+    raise ValueError("No app name could be resolved from current file location.")
 
 
 def get_exact_traceback(skip: int | None = None) -> str:
@@ -52,6 +76,8 @@ def get_exact_traceback(skip: int | None = None) -> str:
 
 
 mo_helper_kit = SimpleNamespace(
+    pascal_to_snake=pascal_to_snake,
+    get_current_app_name=get_current_app_name,
     get_exact_traceback=get_exact_traceback,
     file_guardian=file_guardian.file_guardian,
 )

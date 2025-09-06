@@ -4,18 +4,16 @@
 #     - Third-Party
 #     - Local Modules
 # ==========================================================
-
-# ==========================================================
-# 2. CONSTANTS
-# ==========================================================
-
-
 import pytest
 import uuid
 import sys
 import tempfile
 import shutil
 import pytest
+import random
+import string
+import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import List, Tuple, Type
 import polars as pl
@@ -27,10 +25,13 @@ from django.apps import apps, AppConfig
 from django.db import models, connection
 from django.test import SimpleTestCase, override_settings
 from django.conf import settings
-from django_mindoff.components.helpers.string_conversion import pascal_to_snake
-from django_mindoff.components.helpers.django_info import get_current_app_name
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django_mindoff.components.helper_kit import mo_helper_kit
+from django_mindoff.components.validation_kit import mo_validation_kit
 
-# ==== 2. Constants ====
+# ==========================================================
+# 2. CONSTANTS
+# ==========================================================
 PASCAL_CASE_REGEX = r"^[A-Z][a-zA-Z0-9]+$"
 SNAKE_CASE_REGEX = r"^[a-z0-9_]+$"
 test_case = SimpleTestCase()
@@ -46,17 +47,19 @@ class MindoffTestCase:
     @pytest.fixture(autouse=True)
     def run(self, request):
         self.asserts = request.getfixturevalue("_asserts")
-        self.init_temp_app = request.getfixturevalue("_init_temp_app")
-        self.init_temp_model = request.getfixturevalue("_init_temp_model")
+        self.mo_mock_app = request.getfixturevalue("_mo_mock_app")
+        self.mo_mock_model = request.getfixturevalue("_mo_mock_model")
         self.init_temp_dir = request.getfixturevalue("_init_temp_dir")
-        self.generate_model_dfs = request.getfixturevalue("_generate_model_dfs")
+        self.mo_mock_model_dfs = request.getfixturevalue("_mo_mock_model_dfs")
+        if hasattr(mo_validation_kit, "reset"):
+            mo_validation_kit.reset()
 
     @pytest.fixture(scope="session")
     def _asserts(self):
         return SimpleTestCase()
 
     @pytest.fixture
-    def _init_temp_app(self, request):
+    def _mo_mock_app(self, request):
         """Temporary Django App Creation Fixure."""
         CreatedApp = namedtuple("CreatedApp", ["app_name", "temp_dir", "override"])
         created_apps = []
@@ -101,7 +104,7 @@ class MindoffTestCase:
         return __setup
 
     @pytest.fixture
-    def _init_temp_model(self, request):
+    def _mo_mock_model(self, request):
         """Temporary Django Model Creation Fixure."""
         # ---- Setup ----
         created_models = []
@@ -116,16 +119,18 @@ class MindoffTestCase:
             fields: dict = {},
             base_model=models.Model,
         ):
-            _validate_inittempmodel_parameters(model_name, table_name, foreign_keys)
+            _validate_mockmodel_parameters(model_name, table_name, foreign_keys)
             if app_name:
                 app_name = _validate_or_generate_app_name(
                     app_name=app_name, is_exists=True
                 )
             else:
-                app_name = get_current_app_name()
+                app_name = mo_helper_kit.get_current_app_name()
             model_name = _validate_or_generate_model_name(created_models, model_name)
             if not table_name:
-                table_name = pascal_to_snake(model_name.lower().removesuffix("model"))
+                table_name = mo_helper_kit.pascal_to_snake(
+                    model_name.lower().removesuffix("model")
+                )
             model_class = _create_model(
                 app_name, model_name, table_name, foreign_keys, fields, base_model
             )
@@ -174,7 +179,7 @@ class MindoffTestCase:
         return __setup
 
     @pytest.fixture
-    def _generate_model_dfs(self, request):
+    def _mo_mock_model_dfs(self, request):
         @typechecked
         def __bake_model_df_dict(
             models: List[Type],
@@ -201,7 +206,7 @@ class MindoffTestCase:
                 if is_enforce_db_column:
                     field_map = {
                         f.name: (f.db_column or f.get_attname_column()[1])
-                        for f in model._meta.get_fields()
+                        for f in model._meta.concrete_fields
                         if hasattr(f, "attname")
                     }
                     df = df.rename({col: field_map.get(col, col) for col in df.columns})
@@ -303,7 +308,7 @@ def _validate_or_generate_model_name(
     return model_name
 
 
-def _validate_inittempmodel_parameters(model_name, table_name, foreign_keys):
+def _validate_mockmodel_parameters(model_name, table_name, foreign_keys):
     if model_name:
         test_case.assertRegex(model_name, PASCAL_CASE_REGEX, msg="Invalid Model Name")
         test_case.assertTrue(
@@ -322,7 +327,7 @@ def _validate_model(model_class):
     test_case.assertTrue(model_class._meta.db_table)
 
     # Check model fields exist and have proper types
-    fields = {f.name: f for f in model_class._meta.get_fields()}
+    fields = {f.name: f for f in model_class._meta.concrete_fields}
     test_case.assertIn("id", fields)
     for field in fields.values():
         if field.is_relation and field.many_to_one:
@@ -362,7 +367,7 @@ def _generate_model_factory_objects(
     objs = []
 
     if not fk_fields_map:  # top-level
-        baked = baker.prepare(model, _quantity=n_per_parent)
+        baked = _prepare_with_constraints(model, quantity=n_per_parent)
         return baked if isinstance(baked, list) else [baked]
 
     immediate_parent_name, immediate_parent_objs = list(fk_fields_map.items())[-1]
@@ -381,31 +386,197 @@ def _generate_model_factory_objects(
                 # fallback: pick first object from list
                 fk_kwargs[fk_name] = fk_list[0]
 
-        objs.extend(baker.prepare(model, _quantity=n_per_parent, **fk_kwargs))
+        objs.extend(
+            _prepare_with_constraints(model, quantity=n_per_parent, **fk_kwargs)
+        )
 
     return objs
+
+
+def _prepare_with_constraints(model, quantity=1, **fk_kwargs):
+    objs = []
+    used_uniques = {}
+
+    for _ in range(quantity):
+        kwargs = dict(fk_kwargs)
+
+        for field in model._meta.fields:
+            if field.name in kwargs:
+                continue
+
+            value = _generate_field_value(field, used_uniques, kwargs)
+            if value is not None:
+                kwargs[field.name] = value
+
+        objs.append(baker.prepare(model, **kwargs))
+
+    return objs
+
+
+def _generate_field_value(field, used_uniques, partial_kwargs):
+    """
+    Generate a value that respects Django field constraints,
+    including unique, unique_for_date/month/year.
+    """
+
+    # Defaults
+    if field.has_default():
+        return field.get_default()
+
+    # Handle null
+    if getattr(field, "null", False) and random.random() < 0.1:
+        return None
+
+    # Handle blank
+    if getattr(field, "blank", False) and random.random() < 0.1:
+        return ""
+
+    # Helper for uniqueness tracking
+    def _register_unique(value, key):
+        if value in used_uniques.setdefault(key, set()):
+            return False
+        used_uniques[key].add(value)
+        return True
+
+    # CharField / TextField
+    if field.get_internal_type() in ["CharField", "TextField"]:
+        max_len = getattr(field, "max_length", 20) or 20
+        while True:
+            value = "".join(random.choices(string.ascii_letters, k=min(max_len, 10)))
+
+            if getattr(field, "unique", False):
+                if not _register_unique(value, field.name):
+                    continue
+
+            # unique_for_date/month/year
+            for attr in ["unique_for_date", "unique_for_month", "unique_for_year"]:
+                related = getattr(field, attr, None)
+                if related:
+                    dt_val = partial_kwargs.get(related)
+                    if not dt_val:
+                        break  # related field not yet generated
+                    if attr == "unique_for_date":
+                        key = f"{field.name}:date"
+                        unique_key = (value, dt_val.date())
+                    elif attr == "unique_for_month":
+                        key = f"{field.name}:month"
+                        unique_key = (value, dt_val.year, dt_val.month)
+                    elif attr == "unique_for_year":
+                        key = f"{field.name}:year"
+                        unique_key = (value, dt_val.year)
+                    if not _register_unique(unique_key, key):
+                        continue
+            return value
+
+    # IntegerField
+    if field.get_internal_type() in [
+        "IntegerField",
+        "SmallIntegerField",
+        "BigIntegerField",
+    ]:
+        min_value, max_value = -1000, 1000
+        for v in getattr(field, "validators", []):
+            if isinstance(v, MinValueValidator):
+                min_value = max(min_value, v.limit_value)
+            if isinstance(v, MaxValueValidator):
+                max_value = min(max_value, v.limit_value)
+
+        while True:
+            value = random.randint(min_value, max_value)
+            if getattr(field, "unique", False):
+                if not _register_unique(value, field.name):
+                    continue
+            return value
+
+    # DecimalField
+    if field.get_internal_type() == "DecimalField":
+        max_digits = getattr(field, "max_digits", 5) or 5
+        decimal_places = getattr(field, "decimal_places", 2) or 2
+        max_value = Decimal(10) ** (max_digits - decimal_places)
+        while True:
+            value = Decimal(random.uniform(0, float(max_value)))
+            value = value.quantize(Decimal(10) ** -decimal_places)
+            if getattr(field, "unique", False):
+                if not _register_unique(value, field.name):
+                    continue
+            return value
+
+    # FloatField
+    if field.get_internal_type() == "FloatField":
+        return random.uniform(0, 1000)
+
+    # BooleanField
+    if field.get_internal_type() == "BooleanField":
+        return random.choice([True, False])
+
+    # Date / DateTime
+    if field.get_internal_type() == "DateField":
+        return datetime.date.today()
+    if field.get_internal_type() == "DateTimeField":
+        return datetime.datetime.now()
+
+    # UUIDField
+    if field.get_internal_type() == "UUIDField":
+        while True:
+            value = uuid.uuid4()
+            if getattr(field, "unique", False):
+                if not _register_unique(value, field.name):
+                    continue
+            return value
+
+    # SlugField
+    if field.get_internal_type() == "SlugField":
+        while True:
+            value = "".join(random.choices(string.ascii_lowercase, k=8))
+            if getattr(field, "unique", False):
+                if not _register_unique(value, field.name):
+                    continue
+            return value
+
+    # Fallback (relations, etc.)
+    return (
+        baker.prepare(field.related_model)
+        if getattr(field, "related_model", None)
+        else None
+    )
 
 
 def _apply_exclude_columns(idx, df, exclude_columns: List[List[str]]):
     cols = exclude_columns[idx] if idx < len(exclude_columns) else []
     if cols:
-        return df.drop([c for c in cols if c in df.columns])
+        missing = [c for c in cols if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"Cannot exclude non-existing columns {missing} "
+                f"at index {idx}. Available columns: {list(df.columns)}"
+            )
+        return df.drop(cols)
+
     return df
 
 
 def _apply_modify(idx, df, modify: List[dict]):
     changes = modify[idx] if idx < len(modify) else {}
     for row_idx, updates in changes.items():
+        if not (0 <= row_idx < df.height):
+            raise IndexError(
+                f"Row index {row_idx} out of range for DataFrame with {df.height} rows "
+                f"(modify idx={idx})."
+            )
         for col, val in updates.items():
-            if col in df.columns and 0 <= row_idx < df.height:
-                df = df.with_columns(
-                    [
-                        pl.when(pl.arange(0, df.height) == row_idx)
-                        .then(pl.lit(val))
-                        .otherwise(pl.col(col))
-                        .alias(col)
-                    ]
+            if col not in df.columns:
+                raise ValueError(
+                    f"Cannot modify non-existing column '{col}' at index {idx}. "
+                    f"Available columns: {list(df.columns)}"
                 )
+            df = df.with_columns(
+                [
+                    pl.when(pl.arange(0, df.height) == row_idx)
+                    .then(pl.lit(val))
+                    .otherwise(pl.col(col))
+                    .alias(col)
+                ]
+            )
     return df
 
 

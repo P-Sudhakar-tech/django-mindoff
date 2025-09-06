@@ -2,10 +2,14 @@ import polars as pl
 import uuid
 import orjson
 import datetime
+from decimal import Decimal
 from typing import Dict, Union, Type
+from collections.abc import Callable
 from django.db import models
 from django.utils import timezone
 from ..polars_kit import mo_polars_kit
+import warnings
+
 
 DJANGO_TO_POLARS_TYPE_MAP = {
     "AutoField": pl.Int64,
@@ -63,14 +67,17 @@ class RowValidator:
             return df
         if ERROR_COL not in df.columns:
             df = df.with_columns(pl.lit(None).cast(pl.Utf8).alias(ERROR_COL))
-        for field in model._meta.get_fields():
-            if not isinstance(field, models.Field) or field.name not in df.schema:
+        for field in model._meta.concrete_fields:
+            if (
+                not isinstance(field, models.Field)
+                or (field.db_column or field.name) not in df.schema
+            ):
                 continue
             df = self._sanitize_field(model, df, field)
         return df
 
     def _sanitize_field(self, model, df, field):
-        name = field.name
+        name = field.db_column or field.name
         dtype = df.collect_schema().get(name)
         if isinstance(field, models.ManyToManyField):
             raise ValueError(
@@ -312,7 +319,7 @@ class RowValidator:
         return df
 
     def _sanitize_date_field(self, model, df, field, dtype):
-        name = field.name
+        name = field.db_column or field.name
         now = timezone.now()
         today = timezone.localdate()
         is_datetime = isinstance(field, models.DateTimeField)
@@ -437,24 +444,34 @@ class RowValidator:
         return df
 
     def _sanitize_uuid_field(self, model, df, field, dtype):
-        is_primary = field.primary_key
+        field_name = field.db_column or field.name
+        if dtype not in (pl.Utf8, pl.String, str):
+            try:
+                df = df.with_columns(df[field_name].cast(pl.Utf8).alias(field_name))
+            except Exception:
+                warnings.warn(
+                    f"Column `{field_name}` is mapped to a Django UUIDField but its dtype is not "
+                    f"one of the expected types: (pl.Utf8, pl.String, str). "
+                    f"Falling back to `map_elements` for conversion, which may hurt performance. "
+                    f"Tip: Cast the column to `pl.Utf8` beforehand to avoid this warning.",
+                    RuntimeWarning,
+                )
+                convert_to_str = lambda row: (str(row) if row is not None else None)
+                df = mo_polars_kit.fr_fill_notnull(
+                    df,
+                    column=field_name,
+                    fill_value=convert_to_str,
+                    row_param="row",
+                    mode="map",
+                    dtype=pl.Utf8,
+                )
 
         def transform(col: pl.Series) -> pl.Series:
             col = col.cast(pl.Utf8).str.strip_chars()
             uuid_regex = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
             is_invalid = col.is_not_null() & ~col.str.contains(uuid_regex)
             col = pl.when(is_invalid).then(None).otherwise(col)
-            if is_primary:
-                is_null = col.is_null()
-                col_len = (
-                    df.select(col.is_null().sum()).item()
-                    if not isinstance(df, pl.LazyFrame)
-                    else df.select(col.is_null().sum()).collect().item()
-                )
-                uuid4_values = [str(uuid.uuid4()) for _ in range(col_len)]
-                generated = pl.Series(name="__uuid4__", values=uuid4_values)
-                col = pl.when(is_null).then(generated).otherwise(col)
-            col = col.str.to_lowercase()
+            col = col.str.to_lowercase().str.replace_all("-", "")
             return col
 
         df = self._transform_and_validate_column(
@@ -521,8 +538,7 @@ class RowValidator:
         label: str,
         is_choices: bool = False,
     ):
-        name = field.name
-        default = field.get_default() if field.has_default() else None
+        name = field.db_column or field.name
         is_blank_true = getattr(field, "blank", False)
         orig_null_col = f"__orig_null__{name}"
         post_null_col = f"__post_null__{name}"
@@ -547,14 +563,7 @@ class RowValidator:
                     .alias(name)
                 )
             df = df.with_columns(pl.col(name).is_null().alias(orig_null_col))
-            if isinstance(default, datetime.timedelta):
-                default = int(default.total_seconds() * 1_000_000)
-            df = df.with_columns(
-                pl.when(pl.col(name).is_null())
-                .then(pl.lit(default))
-                .otherwise(pl.col(name))
-                .alias(name)
-            )
+            df = self.__apply_default_to_df_column(df, name, field, django_field_name)
             transformed = transform_fn(pl.col(name))
             if not is_choices:
                 try:
@@ -592,6 +601,26 @@ class RowValidator:
             raise ValueError(
                 f"[{model.__name__}.{name}] {label} Validation failed: {e}"
             )
+
+    def __apply_default_to_df_column(self, df, field_name, field, django_field_name):
+        if not field.has_default():
+            return df
+        default = field.default
+        is_timedelta = isinstance(field.get_default(), datetime.timedelta)
+        is_str = django_field_name == "UUIDField"
+
+        def __apply_default():
+            value = default() if callable(default) else default
+            if is_timedelta:
+                value = int(value.total_seconds() * 1_000_000)
+            if is_str:
+                value = str(value)
+            return value
+
+        mode = "map" if callable(default) else "lit"
+        return mo_polars_kit.fr_fill_null(
+            df, column=field_name, fill_value=__apply_default, mode=mode
+        )
 
     def _field_vs_data_validation(self, model, df, field, name, expected_dtype):
         is_null_true = getattr(field, "null", False)
@@ -713,7 +742,9 @@ class RowValidator:
                 )
             )
 
-        return df.select([name, ERROR_COL])
+        temp_cols = [c for c in df.columns if c.startswith("__") and c != ERROR_COL]
+        df = df.drop(temp_cols)
+        return df
 
     def _append_or_initialize_error(
         self, error_key: str, context: str = "", exception: str = ""
