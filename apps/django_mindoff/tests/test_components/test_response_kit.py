@@ -280,9 +280,11 @@ class TestExceptionHandler(MindoffTestCase):
 
     @pytest.mark.parametrize("is_debug", [True, False])
     def test_exception_handler_invalid(self, rf, settings, capsys, caplog, is_debug):
+        from apps.django_mindoff.components.validation_kit import mo_validation_kit
+
         @mo_response_kit.response_guardian
         def view(request):
-            raise ValueError("boom")
+            mo_validation_kit.ensure_equal(1, 2, msg="boom", is_exception=True)
 
         settings.DEBUG = is_debug
         request = rf.get("/")

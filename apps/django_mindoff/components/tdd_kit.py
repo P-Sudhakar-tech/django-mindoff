@@ -15,7 +15,7 @@ import string
 import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, Optional
 import polars as pl
 from model_bakery import baker
 from itertools import product
@@ -115,11 +115,14 @@ class MindoffTestCase:
             *,
             app_name: str | None = None,
             table_name: str | None = None,
-            foreign_keys: List[Tuple[str, str]] = [],
+            foreign_keys: List[Tuple[str, str] | Tuple[str, str, str]] = [],
             fields: dict = {},
             base_model=models.Model,
         ):
-            _validate_mockmodel_parameters(model_name, table_name, foreign_keys)
+            status, foreign_keys = _normalize_fk_and_validate_mockmodel_params(
+                model_name, table_name, foreign_keys
+            )
+            mo_validation_kit.ensure_truthy(status)
             if app_name:
                 app_name = _validate_or_generate_app_name(
                     app_name=app_name, is_exists=True
@@ -228,6 +231,31 @@ class MindoffTestCase:
 # 5. HELPER FUNCTIONS
 # ==========================================================
 # Add Helper Functions Below
+
+
+def _normalize_fk_and_validate_mockmodel_params(model_name, table_name, foreign_keys):
+    if model_name:
+        test_case.assertRegex(model_name, PASCAL_CASE_REGEX, msg="Invalid Model Name")
+        test_case.assertTrue(
+            model_name.endswith("Model"),
+            msg=f"Model name '{model_name}' must end with 'Model'",
+        )
+    if table_name:
+        test_case.assertRegex(table_name, SNAKE_CASE_REGEX)
+    for idx, fk in enumerate(foreign_keys):
+        fk_list = list(fk)
+        model_name = fk_list[1]
+        if model_name:
+            test_case.assertRegex(model_name, PASCAL_CASE_REGEX)
+        if len(fk_list) == 2:
+            fk_list.append("required")
+        elif len(fk_list) == 3:
+            option = fk_list[2]
+            mo_validation_kit.ensure_in(option, ["required", "optional"])
+        foreign_keys[idx] = tuple(fk_list)
+    return True, foreign_keys
+
+
 def _create_model(
     app_name: str,
     model_name: str,
@@ -245,19 +273,26 @@ def _create_model(
         ),
         "__module__": __name__,
     }
-    for main_app_name, main_model_name in foreign_keys:
+    for main_app_name, main_model_name, option in foreign_keys:
         fk_name = main_model_name.lower().removesuffix("model")
-        # Look up the actual model class from registry
         try:
             main_model_class = apps.get_model(main_app_name, main_model_name)
         except LookupError:
             raise LookupError(
                 f"Foreign key target {main_app_name}.{main_model_name} not found in app registry"
             )
-
-        model_fields[fk_name] = models.ForeignKey(
-            main_model_class, on_delete=models.CASCADE, db_column=f"{fk_name}_id"
-        )
+        if option == "optional":
+            model_fields[fk_name] = models.ForeignKey(
+                main_model_class,
+                on_delete=models.CASCADE,
+                db_column=f"{fk_name}_id",
+                null=True,
+                blank=True,
+            )
+        else:
+            model_fields[fk_name] = models.ForeignKey(
+                main_model_class, on_delete=models.CASCADE, db_column=f"{fk_name}_id"
+            )
     model_fields.update(fields)
 
     class Meta:
@@ -306,20 +341,6 @@ def _validate_or_generate_model_name(
         if model_name in existing_model_names:
             raise ValueError(f"Model name '{model_name}' already exists.")
     return model_name
-
-
-def _validate_mockmodel_parameters(model_name, table_name, foreign_keys):
-    if model_name:
-        test_case.assertRegex(model_name, PASCAL_CASE_REGEX, msg="Invalid Model Name")
-        test_case.assertTrue(
-            model_name.endswith("Model"),
-            msg=f"Model name '{model_name}' must end with 'Model'",
-        )
-    if table_name:
-        test_case.assertRegex(table_name, SNAKE_CASE_REGEX)
-    for _, model_name in foreign_keys or []:
-        if model_name:
-            test_case.assertRegex(model_name, PASCAL_CASE_REGEX)
 
 
 def _validate_model(model_class):
@@ -569,14 +590,20 @@ def _apply_modify(idx, df, modify: List[dict]):
                     f"Cannot modify non-existing column '{col}' at index {idx}. "
                     f"Available columns: {list(df.columns)}"
                 )
-            df = df.with_columns(
-                [
-                    pl.when(pl.arange(0, df.height) == row_idx)
-                    .then(pl.lit(val))
-                    .otherwise(pl.col(col))
-                    .alias(col)
-                ]
-            )
+            try:
+                df = df.with_columns(
+                    [
+                        pl.when(pl.arange(0, df.height) == row_idx)
+                        .then(pl.lit(val, allow_object=True))
+                        .otherwise(pl.col(col))
+                        .alias(col)
+                    ]
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to modify value in column '{col}' at row {row_idx}. "
+                    f"Attempted value: {val!r}. Original error: {e}"
+                )
     return df
 
 

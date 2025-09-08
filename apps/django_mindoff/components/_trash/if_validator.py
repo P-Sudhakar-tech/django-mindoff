@@ -243,7 +243,7 @@ class MindoffValidator:
 
     # Truthiness
 
-    def ensure_empty(self, value: Any, *, msg: Optional[str] = None):
+    def ensure_falsey(self, value: Any, *, msg: Optional[str] = None):
         ok = not bool(value)
         message = msg or f"Condition failed: expected truthy, got {value!r}"
         return self._record_or_raise(
@@ -254,7 +254,7 @@ class MindoffValidator:
             context={"condition": value},
         )
 
-    def ensure_not_empty(self, value: Any, *, msg: Optional[str] = None):
+    def ensure_truthy(self, value: Any, *, msg: Optional[str] = None):
         ok = bool(value)
         message = msg or f"Condition failed: expected falsy, got {value!r}"
         return self._record_or_raise(

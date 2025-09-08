@@ -1,7 +1,7 @@
 """
 TEST CASES:
 1. Basic exception -- ensure_equal(a, b) ✅
-2. Exception with custom message -- ensure_equal(a, b, msg="cusom message for validation") ✅
+2. Exception with custom message -- ensure_equal(a, b, msg="custom message for validation") ✅
 3. Json Response -- ensure_equal(a, b, is_exception=False) ✅
 4. Json Response with custom message -- ensure_equal(a, b, is_exception=False, msg="VALIDATION_ERR") ✅
 5. Aggregated Exception -- ensure_equal(a, b, is_aggregate=True) -- ensure_not_equal(c, d, is_aggregate=True) -- finalize() ✅
@@ -22,7 +22,7 @@ from django_mindoff.components.tdd_kit import MindoffTestCase
 
 class TestImmediateValidator(MindoffTestCase):
     @pytest.mark.parametrize(
-        "fn, kwargs, is_exception, expected_exc",
+        "fn, kwargs, is_exception, expected_result",
         [
             # ---------------- Exception Cases ----------------
             ("ensure_equal", {"left": 5, "right": 5}, True, True),
@@ -47,8 +47,8 @@ class TestImmediateValidator(MindoffTestCase):
             ),
             ("ensure_almost_equal", {"left": 1.0, "right": 1.0000001}, True, True),
             ("ensure_not_almost_equal", {"left": 1.0, "right": 1.1}, True, True),
-            ("ensure_empty", {"value": []}, True, True),
-            ("ensure_not_empty", {"value": "x"}, True, True),
+            ("ensure_falsey", {"value": []}, True, True),
+            ("ensure_truthy", {"value": "x"}, True, True),
             ("ensure_type", {"value": 123, "typ": int}, True, True),
             ("ensure_not_type", {"value": "x", "typ": int}, True, True),
             ("ensure_subclass", {"cls": bool, "parent": int}, True, True),
@@ -69,12 +69,12 @@ class TestImmediateValidator(MindoffTestCase):
             ("ensure_exists", {"path": sys.executable}, True, True),
             ("ensure_not_exists", {"path": "nonexistent_file.tmp"}, True, True),
             ("ensure_equal", {"left": [1, 2, 3], "right": (1, 2, 3)}, True, True),
-            ("ensure_empty", {"value": 0}, True, True),
-            ("ensure_not_empty", {"value": True}, True, True),
+            ("ensure_falsey", {"value": 0}, True, True),
+            ("ensure_truthy", {"value": True}, True, True),
             ("ensure_subclass", {"cls": str, "parent": object}, True, True),
             ("ensure_finite", {"value": 3.14}, True, True),
             ("ensure_regex", {"value": "hello", "pattern": r"hello"}, True, True),
-            ("custom", {"check": lambda: True}, True, True),
+            ("ensure", {"check": lambda: True}, True, True),
             # ---------------- Json Cases ----------------
             ("ensure_equal", {"left": 5, "right": 5}, False, True),
             ("ensure_not_equal", {"left": "x", "right": "y"}, False, True),
@@ -98,8 +98,8 @@ class TestImmediateValidator(MindoffTestCase):
             ),
             ("ensure_almost_equal", {"left": 1.0, "right": 1.0000001}, False, True),
             ("ensure_not_almost_equal", {"left": 1.0, "right": 1.1}, False, True),
-            ("ensure_empty", {"value": []}, False, True),
-            ("ensure_not_empty", {"value": "x"}, False, True),
+            ("ensure_falsey", {"value": []}, False, True),
+            ("ensure_truthy", {"value": "x"}, False, True),
             ("ensure_type", {"value": 123, "typ": int}, False, True),
             ("ensure_not_type", {"value": "x", "typ": int}, False, True),
             ("ensure_subclass", {"cls": bool, "parent": int}, False, True),
@@ -120,17 +120,17 @@ class TestImmediateValidator(MindoffTestCase):
             ("ensure_exists", {"path": sys.executable}, False, True),
             ("ensure_not_exists", {"path": "nonexistent_file.tmp"}, False, True),
             ("ensure_equal", {"left": [1, 2, 3], "right": (1, 2, 3)}, False, True),
-            ("ensure_empty", {"value": 0}, False, True),
-            ("ensure_not_empty", {"value": True}, False, True),
+            ("ensure_falsey", {"value": 0}, False, True),
+            ("ensure_truthy", {"value": True}, False, True),
             ("ensure_subclass", {"cls": str, "parent": object}, False, True),
             ("ensure_finite", {"value": 3.14}, False, True),
             ("ensure_regex", {"value": "hello", "pattern": r"hello"}, False, True),
-            ("custom", {"check": lambda: True}, False, True),
+            ("ensure", {"check": lambda: True}, False, True),
         ],
     )
-    def test_validation_acceptance(self, fn, kwargs, is_exception, expected_exc):
+    def test_validation_acceptance(self, fn, kwargs, is_exception, expected_result):
         result = getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
-        assert result == expected_exc
+        assert result == expected_result
 
     @pytest.mark.parametrize("is_debug", [True, False])
     @pytest.mark.parametrize(
@@ -186,8 +186,8 @@ class TestImmediateValidator(MindoffTestCase):
                 ValueError,
                 False,
             ),
-            ("ensure_empty", {"value": [1]}, True, ValueError, False),
-            ("ensure_not_empty", {"value": ""}, True, ValueError, False),
+            ("ensure_falsey", {"value": [1]}, True, ValueError, False),
+            ("ensure_truthy", {"value": ""}, True, ValueError, False),
             ("ensure_type", {"value": "abc", "typ": int}, True, TypeError, False),
             ("ensure_not_type", {"value": 123, "typ": int}, True, TypeError, False),
             ("ensure_subclass", {"cls": int, "parent": str}, True, TypeError, False),
@@ -272,7 +272,7 @@ class TestImmediateValidator(MindoffTestCase):
                 FileExistsError,
                 False,
             ),
-            ("custom", {"check": False}, True, ValidationError, False),
+            ("ensure", {"check": False}, True, ValidationError, False),
             # ---------------- Json Cases ----------------
             ("ensure_equal", {"left": 3, "right": 5}, False, ValueError, False),
             ("ensure_not_equal", {"left": "x", "right": "x"}, False, ValueError, False),
@@ -317,8 +317,8 @@ class TestImmediateValidator(MindoffTestCase):
                 ValueError,
                 False,
             ),
-            ("ensure_empty", {"value": [1]}, False, ValueError, False),
-            ("ensure_not_empty", {"value": ""}, False, ValueError, False),
+            ("ensure_falsey", {"value": [1]}, False, ValueError, False),
+            ("ensure_truthy", {"value": ""}, False, ValueError, False),
             ("ensure_type", {"value": "abc", "typ": int}, False, TypeError, False),
             ("ensure_not_type", {"value": 123, "typ": int}, False, TypeError, False),
             ("ensure_subclass", {"cls": int, "parent": str}, False, TypeError, False),
@@ -415,14 +415,12 @@ class TestImmediateValidator(MindoffTestCase):
                 FileExistsError,
                 False,
             ),
-            ("custom", {"check": False}, False, ValidationError, False),
+            ("ensure", {"check": False}, False, ValidationError, False),
         ],
     )
     def test_validation_rejection(
         self,
         settings,
-        capsys,
-        caplog,
         is_debug,
         fn,
         kwargs,
@@ -431,39 +429,25 @@ class TestImmediateValidator(MindoffTestCase):
         is_msg,
     ):
         settings.DEBUG = is_debug
-        result = getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
-        assert result.status_code == 400
-        result = result.data
-        assert result["status"] == "fail"
-        assert result["message"]["code"] == "VALIDATION_ERR"
-        assert result["message"]["category"] == "danger"
-        if is_exception:
-            assert result["data"] == []
-            description = result["message"]["description"]
-            exc_name = expected_exc.__name__
 
-            if is_debug:
-                assert exc_name in description
-                captured = capsys.readouterr()
-                assert "Traceback" in captured.out
-                if is_msg:
-                    assert "Custom Message 3 is not equal 5" in captured.out
-            else:
-                assert exc_name not in description
-                with caplog.at_level(logging.ERROR):
-                    assert any("Traceback" in rec.message for rec in caplog.records)
-                    if is_msg:
-                        assert any(
-                            "Custom Message 3 is not equal 5" in rec.message
-                            for rec in caplog.records
-                        )
+        if is_exception:
+            with pytest.raises(expected_exc) as excinfo:
+                getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
+            if is_msg:
+                assert "Custom Message 3 is not equal 5" in str(excinfo.value)
         else:
+            result = getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
+            assert result.status_code == 400
+            result = result.data
+            assert result["status"] == "fail"
+            assert result["message"]["code"] == "VALIDATION_ERR"
+            assert result["message"]["category"] == "danger"
             assert result["data"][0]["type"] == expected_exc.__name__
             if is_msg:
                 assert result["data"][0]["message"] == "Custom Message 3 is not equal 5"
 
     @pytest.mark.parametrize(
-        "fn, kwargs, is_exception, expected_exc",
+        "fn, kwargs, is_exception, expected_result",
         [
             # ---------------- BOUNDARY -- EXCEPTION CASES ----------------
             ("ensure_equal", {"left": [], "right": []}, True, True),
@@ -506,8 +490,8 @@ class TestImmediateValidator(MindoffTestCase):
                 True,
                 True,
             ),
-            ("ensure_empty", {"value": ""}, True, True),
-            ("ensure_not_empty", {"value": " "}, True, True),
+            ("ensure_falsey", {"value": ""}, True, True),
+            ("ensure_truthy", {"value": " "}, True, True),
             ("ensure_finite", {"value": float("nan")}, True, ValueError),
             # ---------------- BOUNDARY -- JSON CASES ----------------
             ("ensure_equal", {"left": [], "right": []}, False, True),
@@ -550,8 +534,8 @@ class TestImmediateValidator(MindoffTestCase):
                 False,
                 True,
             ),
-            ("ensure_empty", {"value": ""}, False, True),
-            ("ensure_not_empty", {"value": " "}, False, True),
+            ("ensure_falsey", {"value": ""}, False, True),
+            ("ensure_truthy", {"value": " "}, False, True),
             ("ensure_finite", {"value": float("nan")}, True, ValueError),
             # ---------------- ANOMALY -- EXCEPTION CASES ----------------
             ("ensure_equal", {"left": None, "right": None}, True, True),
@@ -585,8 +569,8 @@ class TestImmediateValidator(MindoffTestCase):
             ("ensure_not_regex", {"value": "", "pattern": r"\d+"}, True, True),
             ("ensure_exists", {"path": ""}, True, True),
             ("ensure_not_exists", {"path": ""}, True, FileExistsError),
-            ("custom", {"check": None}, True, ValidationError),
-            ("custom", {"check": lambda: 1 / 0}, True, ValidationError),
+            ("ensure", {"check": None}, True, ValidationError),
+            ("ensure", {"check": lambda: 1 / 0}, True, ValidationError),
             # ---------------- ANOMALY -- JSON CASES ----------------
             ("ensure_equal", {"left": None, "right": None}, False, True),
             ("ensure_equal", {"left": object(), "right": object()}, False, ValueError),
@@ -624,34 +608,29 @@ class TestImmediateValidator(MindoffTestCase):
             ("ensure_not_regex", {"value": "", "pattern": r"\d+"}, False, True),
             ("ensure_exists", {"path": ""}, False, True),
             ("ensure_not_exists", {"path": ""}, False, FileExistsError),
-            ("custom", {"check": None}, False, ValidationError),
-            ("custom", {"check": lambda: 1 / 0}, False, ValidationError),
+            ("ensure", {"check": None}, False, ValidationError),
+            ("ensure", {"check": lambda: 1 / 0}, False, ValidationError),
         ],
     )
     def test_validation_boundary_anomaly(
-        self, settings, capsys, fn, kwargs, is_exception, expected_exc
+        self, settings, fn, kwargs, is_exception, expected_result
     ):
         settings.DEBUG = True
-        result = getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
-        if expected_exc is not True:
-            assert result.status_code == 400
-            result = result.data
-            assert result["status"] == "fail"
-            assert result["message"]["code"] == "VALIDATION_ERR"
-            if is_exception:
-                assert result["data"] == []
-                assert (
-                    str(expected_exc) in result["message"]["description"]
-                    or getattr(expected_exc, "__name__", None)
-                    in result["message"]["description"]
-                )
-                captured_print = capsys.readouterr()
-                assert "Traceback" in captured_print.out
-            else:
-                assert result["data"][0]["type"] == expected_exc.__name__
-
+        if is_exception and expected_result != True:
+            with pytest.raises(expected_result):
+                getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
         else:
-            assert result == expected_exc
+            result = getattr(mo_validation_kit, fn)(**kwargs, is_exception=is_exception)
+            if expected_result is not True:
+                assert result.status_code == 400
+                result = result.data
+                assert result["status"] == "fail"
+                assert result["message"]["code"] == "VALIDATION_ERR"
+                assert result["message"]["category"] == "danger"
+                assert result["data"][0]["type"] == expected_result.__name__
+
+            else:
+                assert result == expected_result
 
 
 class TestAggregatedValidator:
@@ -671,41 +650,16 @@ class TestAggregatedValidator:
             is_exception=is_exception,
             msg="Custom Message 99 not in 1,2",
         )
-        result = mo_validation_kit.finalize(is_exception=is_exception)
-        assert result.status_code == 400
-        result = result.data
-        assert result["status"] == "fail"
-        assert result["message"]["code"] == "VALIDATION_ERR"
-        assert result["message"]["category"] == "danger"
         if is_exception:
-            assert result["data"] == []
-            description = result["message"]["description"]
-            exc_name = ValidationError.__name__
-            if is_debug:
-                assert exc_name in description
-                captured = capsys.readouterr()
-                assert "Traceback" in captured.out
-                assert "mo_validation_kit.ensure_equal" in captured.out
-                assert "mo_validation_kit.ensure_in" in captured.out
-                assert "Custom Message 99 not in 1,2" in captured.out
-            else:
-                assert exc_name not in description
-                with caplog.at_level(logging.ERROR):
-                    assert any("Traceback" in rec.message for rec in caplog.records)
-                    assert any(
-                        "mo_validation_kit.ensure_equal" in rec.message
-                        for rec in caplog.records
-                    )
-                    assert any(
-                        "mo_validation_kit.ensure_in" in rec.message
-                        for rec in caplog.records
-                    )
-                    assert any(
-                        "Custom Message 99 not in 1,2" in rec.message
-                        for rec in caplog.records
-                    )
-
+            with pytest.raises(ValidationError):
+                mo_validation_kit.finalize(is_exception=is_exception)
         else:
+            result = mo_validation_kit.finalize(is_exception=is_exception)
+            assert result.status_code == 400
+            result = result.data
+            assert result["status"] == "fail"
+            assert result["message"]["code"] == "VALIDATION_ERR"
+            assert result["message"]["category"] == "danger"
             assert len(result["data"]) == 2
             assert result["data"][1]["message"] == "Custom Message 99 not in 1,2"
             for err_obj in result["data"]:

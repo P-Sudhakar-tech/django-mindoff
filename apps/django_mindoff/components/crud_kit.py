@@ -1,6 +1,6 @@
 """
-1. mo_crud_kit.create(model_df_dict, is_partial)
-2. mo_crud_kit.update(model_df_dict, is_partial)
+1. mo_crud_kit.create(model_frm_dict, is_partial)
+2. mo_crud_kit.update(model_frm_dict, is_partial)
 3. mo_crud_kit.delete(list_of_ids, is_partial)
 4. mo_crud_kit.read(model, filter_conditions, columns, is_streaming)
 """
@@ -24,7 +24,7 @@ ERROR_COL = "__error__info"
 # Classes
 # --------------
 @typechecked
-class _DfDictValidInvalidSplitter:
+class _ModelFrmsValidInvalidSplitter:
     """
     ⚠️ INTERNAL CLASS
     Cascade-splits a dict of DataFrames/LazyFrames into valid and invalid sets
@@ -32,10 +32,10 @@ class _DfDictValidInvalidSplitter:
     """
 
     def __init__(
-        self, df_dict: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]]
+        self, model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]]
     ):
-        self.df_dict = self._normalize_dfs(df_dict)
-        self.relations = self._build_relations(list(self.df_dict.keys()))
+        self.model_frms = self._normalize_frms(model_frms)
+        self.relations = self._build_relations(list(self.model_frms.keys()))
 
     def run(self) -> Tuple[
         Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
@@ -45,13 +45,16 @@ class _DfDictValidInvalidSplitter:
         invalid_ids = self._propagate_invalid_ids(invalid_ids)
         return self._split_valid_invalid(invalid_ids)
 
-    def _normalize_dfs(self, df_dict):
+    def _normalize_frms(self, model_frms):
         """Ensure all DataFrames have __error__info column."""
         normalized = {}
-        for model, df in df_dict.items():
-            if ERROR_COL not in df.schema:
-                df = df.with_columns(pl.lit(None).alias(ERROR_COL))
-            normalized[model] = df
+        for model, frm in model_frms.items():
+            frm_schema = (
+                frm.collect_schema() if isinstance(frm, pl.LazyFrame) else frm.schema
+            )
+            if ERROR_COL not in frm_schema:
+                frm = frm.with_columns(pl.lit(None).alias(ERROR_COL))
+            normalized[model] = frm
         return normalized
 
     def _build_relations(self, models_list: List[Type[models.Model]]):
@@ -74,16 +77,16 @@ class _DfDictValidInvalidSplitter:
     def _collect_initial_invalid_ids(self):
         """Collect initial invalid IDs from rows with non-null __error__info."""
         return {
-            m: df.filter(pl.col(ERROR_COL).is_not_null())
+            m: frm.filter(pl.col(ERROR_COL).is_not_null())
             .select(pl.col(m._meta.pk.db_column or m._meta.pk.name))
             .unique()
-            for m, df in self.df_dict.items()
+            for m, frm in self.model_frms.items()
         }
 
     def _propagate_invalid_ids(self, invalid_ids):
         """Cascade invalid IDs across parent-child relations."""
         queue = [
-            m for m, ids in invalid_ids.items() if not mo_polars_kit.is_df_empty(ids)
+            m for m, ids in invalid_ids.items() if not mo_polars_kit.is_frm_empty(ids)
         ]
         visited = set()
 
@@ -108,7 +111,7 @@ class _DfDictValidInvalidSplitter:
     def _propagate_to_parent(self, invalid_ids, child, parent, fk_col, pk_col):
         """Mark parent IDs invalid if child rows are invalid."""
         new_invalid = (
-            self.df_dict[child]
+            self.model_frms[child]
             .join(
                 invalid_ids[child],
                 on=child._meta.pk.db_column or child._meta.pk.name,
@@ -117,103 +120,108 @@ class _DfDictValidInvalidSplitter:
             .select(pl.col(fk_col).alias(pk_col))
             .unique()
         )
-        before_empty = mo_polars_kit.is_df_empty(invalid_ids[parent])
-        invalid_ids[parent] = invalid_ids[parent].vstack(new_invalid).unique()
+        before_empty = mo_polars_kit.is_frm_empty(invalid_ids[parent])
+        invalid_ids[parent] = pl.concat([invalid_ids[parent], new_invalid]).unique()
         return (
             [parent]
-            if not before_empty and not mo_polars_kit.is_df_empty(new_invalid)
+            if not before_empty and not mo_polars_kit.is_frm_empty(new_invalid)
             else []
         )
 
     def _propagate_to_child(self, invalid_ids, child, parent, fk_col, pk_col):
         """Mark child IDs invalid if parent rows are invalid."""
         new_invalid = (
-            self.df_dict[child]
+            self.model_frms[child]
             .join(invalid_ids[parent], left_on=fk_col, right_on=pk_col, how="inner")
             .select(pl.col(child._meta.pk.db_column or child._meta.pk.name))
             .unique()
         )
 
-        before_empty = mo_polars_kit.is_df_empty(invalid_ids[child])
-        invalid_ids[child] = invalid_ids[child].vstack(new_invalid).unique()
+        before_empty = mo_polars_kit.is_frm_empty(invalid_ids[child])
+        invalid_ids[child] = pl.concat([invalid_ids[child], new_invalid]).unique()
         return (
             [child]
-            if not before_empty and not mo_polars_kit.is_df_empty(new_invalid)
+            if not before_empty and not mo_polars_kit.is_frm_empty(new_invalid)
             else []
         )
 
     def _split_valid_invalid(self, invalid_ids):
-        """Split into valid and invalid dfs based on invalid IDs."""
-        valid_dfs, invalid_dfs = {}, {}
-        for m, df in self.df_dict.items():
+        """Split into valid and invalid frms based on invalid IDs."""
+        valid_model_frms, invalid_model_frms = {}, {}
+        for m, frm in self.model_frms.items():
             pk = m._meta.pk.db_column or m._meta.pk.name
             bad_ids = invalid_ids[m]
-            if mo_polars_kit.is_df_empty(bad_ids):
-                valid_dfs[m] = df
-                invalid_dfs[m] = df.filter(
-                    pl.lit(False)
-                )  # empty frame with same schema
+            if mo_polars_kit.is_frm_empty(bad_ids):
+                valid_model_frms[m] = frm.drop(ERROR_COL)
+                invalid_model_frms[m] = frm.filter(pl.lit(False))
             else:
-                df_invalid = df.join(bad_ids, on=pk, how="inner")
-                df_valid = df.join(bad_ids, on=pk, how="anti")
-                valid_dfs[m], invalid_dfs[m] = df_valid, df_invalid
+                frm_invalid = frm.join(bad_ids, on=pk, how="inner")
+                frm_valid = frm.join(bad_ids, on=pk, how="anti").drop(ERROR_COL)
+                valid_model_frms[m], invalid_model_frms[m] = frm_valid, frm_invalid
 
-        return valid_dfs, invalid_dfs
+        return valid_model_frms, invalid_model_frms
 
 
 # --------------
 # Functions
 # --------------
-@mo_response_kit.response_guardian
 @typechecked
-def validate_and_create(
-    df_dict: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+def create(
+    model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
     is_partial: bool = False,
+    is_validate: bool = True,
 ) -> Tuple[str, Dict, Dict]:
     """
     Validate and create model instances from DataFrames.
 
     Returns:
         status: "ok", "fail", or "partial_ok"
-        valid_dfs: dict of models with validated DataFrames
-        invalid_dfs: dict of models with invalid DataFrames
+        valid_model_frms: dict of models with validated DataFrames
+        invalid_model_frms: dict of models with invalid DataFrames
     """
-    # Step 1: Column validation
-    column_validator = ColumnValidator(
-        df_dict=df_dict,
-        is_remove_extra_columns=True,
-        is_add_missing_columns=True,
-    )
-    valid_dfs, invalid_dfs = column_validator.run()
-    if not mo_polars_kit.is_all_dict_df_empty(invalid_dfs):
-        return "fail", valid_dfs, invalid_dfs
+    model_frms = mo_polars_kit.sync_model_frms_type(model_frms)
+    if is_validate:
+        # Step 1: Column validation
+        column_validator = ColumnValidator(
+            model_frms=model_frms,
+            is_remove_extra_columns=True,
+            is_add_missing_columns=True,
+        )
+        valid_model_frms, invalid_model_frms = column_validator.run()
+        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+            return "fail", valid_model_frms, invalid_model_frms
 
-    # Step 2: Row validation
-    row_validator = RowValidator(valid_dfs)
-    row_validated_dfs = row_validator.run()
+        # Step 2: Row validation
+        row_validator = RowValidator(valid_model_frms)
+        row_validated_frms = row_validator.run()
 
-    # Step 3: Foreign key validation
-    fk_validator = ForeignKeyValidator(row_validated_dfs)
-    fk_validated_dfs = fk_validator.validate()
-    df_dict_valid_invalid_splitter = _DfDictValidInvalidSplitter(fk_validated_dfs)
-    valid_dfs, invalid_dfs = df_dict_valid_invalid_splitter.run()
+        # Step 3: Foreign key validation
+        fk_validator = ForeignKeyValidator(row_validated_frms)
+        fk_validated_frms = fk_validator.validate()
+        frm_dict_valid_invalid_splitter = _ModelFrmsValidInvalidSplitter(
+            fk_validated_frms
+        )
+        valid_model_frms, invalid_model_frms = frm_dict_valid_invalid_splitter.run()
 
-    # Step 4: Decide partial save
-    if mo_polars_kit.is_all_dict_df_empty(valid_dfs):
-        return "fail", valid_dfs, invalid_dfs
-    if not mo_polars_kit.is_all_dict_df_empty(invalid_dfs):
-        if not is_partial:
-            return "fail", valid_dfs, invalid_dfs
-        status = "partial_ok"
+        # Step 4: Decide partial save
+        if mo_polars_kit.is_model_frms_empty(valid_model_frms):
+            return "fail", valid_model_frms, invalid_model_frms
+        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+            if not is_partial:
+                return "fail", valid_model_frms, invalid_model_frms
+            status = "partial_ok"
+        else:
+            status = "ok"
     else:
         status = "ok"
+        valid_model_frms, invalid_model_frms = model_frms, {}
 
     # Step 5: Perform CRUD operation
-    crud_processor = CRUDProcessor(valid_dfs)
+    crud_processor = CRUDProcessor(valid_model_frms)
     crud_processor.create()
-    return status, valid_dfs, invalid_dfs
+    return status, valid_model_frms, invalid_model_frms
 
 
 mo_crud_kit = SimpleNamespace(
-    validate_and_create=validate_and_create,
+    create=create,
 )

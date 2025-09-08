@@ -63,14 +63,15 @@ class RowValidator:
         }
 
     def _sanitize_model_df(self, model, df):
-        if mo_polars_kit.is_df_empty(df):
+        if mo_polars_kit.is_frm_empty(df):
             return df
         if ERROR_COL not in df.columns:
             df = df.with_columns(pl.lit(None).cast(pl.Utf8).alias(ERROR_COL))
+        df_schema = df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema
         for field in model._meta.concrete_fields:
             if (
                 not isinstance(field, models.Field)
-                or (field.db_column or field.name) not in df.schema
+                or (field.db_column or field.name) not in df_schema
             ):
                 continue
             df = self._sanitize_field(model, df, field)
@@ -457,7 +458,7 @@ class RowValidator:
                     RuntimeWarning,
                 )
                 convert_to_str = lambda row: (str(row) if row is not None else None)
-                df = mo_polars_kit.fr_fill_notnull(
+                df = mo_polars_kit.frm_fill_notnull(
                     df,
                     column=field_name,
                     fill_value=convert_to_str,
@@ -549,7 +550,7 @@ class RowValidator:
             expected_dtype = DJANGO_TO_POLARS_TYPE_MAP.get(django_field_name)
             if expected_dtype is None:
                 raise ValueError(
-                    f"No Polars type mapped for Django field: {django_field_name}"
+                    f"Django field not Supported with 'django-mindoff' Package: {django_field_name}"
                 )
             valid_string_dtypes = (pl.Utf8, str)
             if not is_blank_true and dtype in valid_string_dtypes:
@@ -607,18 +608,18 @@ class RowValidator:
             return df
         default = field.default
         is_timedelta = isinstance(field.get_default(), datetime.timedelta)
-        is_str = django_field_name == "UUIDField"
+        is_uuid = django_field_name == "UUIDField"
 
         def __apply_default():
             value = default() if callable(default) else default
             if is_timedelta:
                 value = int(value.total_seconds() * 1_000_000)
-            if is_str:
+            if is_uuid:
                 value = str(value)
             return value
 
-        mode = "map" if callable(default) else "lit"
-        return mo_polars_kit.fr_fill_null(
+        mode = "pre-gen" if callable(default) else "lit"
+        return mo_polars_kit.frm_fill_null(
             df, column=field_name, fill_value=__apply_default, mode=mode
         )
 
@@ -626,8 +627,18 @@ class RowValidator:
         is_null_true = getattr(field, "null", False)
         is_blank_true = getattr(field, "blank", False)
         dtype = df.collect_schema().get(name)
-        # Required field validation
+        # 1. Required field validation
         if not is_null_true and not is_blank_true:
+            if isinstance(
+                field, (models.ForeignKey, models.OneToOneField)
+            ) and mo_polars_kit.has_nulls_in_frm_col(df, name):
+                raise ValueError(
+                    self._response_messages(
+                        error_key="missing_required_value",
+                        context=f"{model.__name__}.{name}",
+                        exception="Foreign key value is required and cannot be null.",
+                    )
+                )
             df = df.with_columns(
                 pl.when(pl.col(name).is_null())
                 .then(
@@ -739,6 +750,18 @@ class RowValidator:
                     error_key="column_type_mismatch",
                     context=f"{model.__name__}.{name}",
                     exception=f"expected={expected_dtype}, actual={dtype}",
+                )
+            )
+
+        # 6. UUID primary key check
+        if getattr(field, "primary_key", False) and mo_polars_kit.has_nulls_in_frm_col(
+            df, name
+        ):
+            raise ValueError(
+                self._response_messages(
+                    error_key="missing_required_value",
+                    context=f"{model.__name__}.{name}",
+                    exception="Valid UUID is required for Primary key",
                 )
             )
 

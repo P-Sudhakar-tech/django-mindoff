@@ -3,7 +3,7 @@ from django.db import models
 from django.db.models.fields.related import ForeignKey, OneToOneField
 import numpy as np
 from ..polars_kit import mo_polars_kit
-
+from ..validation_kit import mo_validation_kit
 
 ERROR_COL = "__error__info"
 
@@ -19,10 +19,9 @@ class ForeignKeyValidator:
         }
 
     def _validate_model_foreign_keys(self, model, df):
-        if mo_polars_kit.is_df_empty(df):
+        if mo_polars_kit.is_frm_empty(df):
             return df
         for field in model._meta.concrete_fields:
-            error_message = f"Invalid foreign key to {model.__name__}"
             if ERROR_COL not in df.columns:
                 df = df.with_columns(pl.lit(None).cast(pl.Utf8).alias(ERROR_COL))
 
@@ -40,38 +39,30 @@ class ForeignKeyValidator:
             related_pk_col = (
                 related_pk_field.db_column or related_pk_field.attname or "id"
             )
-
-            # Get distinct FK values used in current df
-            fk_values = self._get_distinct_fk_values(df, db_col)
-
-            # Skip validation if no non-null values
-            if not fk_values:
-                continue
-
             if related_model in self.df_dict:
-                related_df = self.df_dict[related_model]
-                related_ids_expr = related_df.select(
-                    pl.col(related_pk_col).cast(pl.Utf8).unique()
-                )[related_pk_col]
+                related_df = self.df_dict[related_model].select(
+                    pl.col(related_pk_col).cast(pl.Utf8).alias(related_pk_col)
+                )
+                invalid_fk_df = (
+                    df.select(pl.col(db_col).cast(pl.Utf8).alias(db_col))
+                    .drop_nulls()
+                    .join(
+                        related_df, left_on=db_col, right_on=related_pk_col, how="anti"
+                    )
+                )
+                is_invalid_fk = mo_polars_kit.get_frm_height(invalid_fk_df) > 0
             else:
-                db_ids_qs = related_model.objects.filter(
+                fk_values = self._get_distinct_fk_values(df, db_col)
+                if not fk_values:
+                    continue
+                existing_count = related_model.objects.filter(
                     **{f"{related_pk_col}__in": fk_values}
-                ).values_list(related_pk_col, flat=True)
-                related_ids_expr = pl.Series(
-                    "__fk_valid_ids", np.array(db_ids_qs, dtype=str)
+                ).count()
+                is_invalid_fk = existing_count < len(fk_values)
+            if is_invalid_fk:
+                raise ValueError(
+                    f"Model '{model.__name__}' couldn't resolve foreign key(s) in column '{db_col}'."
                 )
-
-            # Vectorized FK validation
-            df = df.with_columns(
-                pl.when(~pl.col(db_col).is_in(related_ids_expr))
-                .then(
-                    pl.when(pl.col(ERROR_COL).is_not_null())
-                    .then(pl.col(ERROR_COL) + pl.lit("; ") + pl.lit(error_message))
-                    .otherwise(pl.lit(error_message))
-                )
-                .otherwise(pl.col(ERROR_COL))
-                .alias(ERROR_COL)
-            )
         return df
 
     def _get_distinct_fk_values(
@@ -81,7 +72,7 @@ class ForeignKeyValidator:
             # Always narrow to only the FK column
             df_fk = df.select(pl.col(col).drop_nulls().cast(pl.Utf8).unique())
             if isinstance(df, pl.LazyFrame):
-                return df_fk.collect(streaming=True).get_column(col).to_list()
+                return df_fk.collect(engine="streaming").get_column(col).to_list()
             else:
                 return df_fk.get_column(col).to_list()
         except Exception as e:

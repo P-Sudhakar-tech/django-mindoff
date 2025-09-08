@@ -25,7 +25,7 @@ def load_responses_csv(csv_location=None):
         reader = csv.DictReader(csvfile, dialect=dialect, quotechar='"')
         actual_headers = [h.strip().lower() for h in (reader.fieldnames or [])]
         missing = [h for h in REQUIRED_HEADERS if h not in actual_headers]
-        mo_validator.ensure_empty(
+        mo_validator.ensure_falsey(
             value=missing,
             msg=f"Missing required headers: {missing}. Perhaps a typo? Or too many additional columns?",
         )
@@ -41,7 +41,7 @@ def load_responses_csv(csv_location=None):
 
             # --- Normalize code ---
             code = str(row_data["code"]).strip().upper()
-            mo_validator.ensure_not_empty(
+            mo_validator.ensure_truthy(
                 value=code, msg=f"Empty 'code' at line {line_num}"
             )
             mo_validator.ensure_not_in(
@@ -63,7 +63,7 @@ def load_responses_csv(csv_location=None):
 
             # --- Enforce no empty fields ---
             for k, v in row_data.items():
-                mo_validator.ensure_not_empty(
+                mo_validator.ensure_truthy(
                     value=v, msg=f"Empty '{k}' at line {line_num}"
                 )
             responses[code] = {

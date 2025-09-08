@@ -19,9 +19,6 @@ def pascal_to_snake(name: str) -> str:
 
 
 def get_app_module_path(app_name: str) -> str:
-    from .response_kit import mo_response_kit
-
-    @mo_response_kit.response_guardian
     def _impl(app_name: str) -> str:
         for path in settings.INSTALLED_APPS:
             if path.rsplit(".", 1)[-1] == app_name:

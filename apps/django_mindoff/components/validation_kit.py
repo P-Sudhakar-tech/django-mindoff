@@ -343,7 +343,7 @@ class MindoffValidator:
 
     # Truthiness
 
-    def ensure_empty(
+    def ensure_falsey(
         self,
         value: Any,
         *,
@@ -355,7 +355,7 @@ class MindoffValidator:
         message = msg or f"Condition failed: expected truthy, got {value!r}"
         return self._record_or_raise(
             ok=ok,
-            fn="ensure_truthy",
+            fn="ensure_falsey",
             exc_type=ValueError,
             message=message,
             context={"condition": value},
@@ -363,7 +363,7 @@ class MindoffValidator:
             is_aggregate=is_aggregate,
         )
 
-    def ensure_not_empty(
+    def ensure_truthy(
         self,
         value: Any,
         *,
@@ -375,7 +375,7 @@ class MindoffValidator:
         message = msg or f"Condition failed: expected falsy, got {value!r}"
         return self._record_or_raise(
             ok=ok,
-            fn="ensure_falsy",
+            fn="ensure_truthy",
             exc_type=ValueError,
             message=message,
             context={"condition": value},
@@ -784,23 +784,18 @@ class MindoffValidator:
             if not self._errors:
                 return True if is_exception else None
 
-            response = (
-                {
-                    "exception": ValidationError(
-                        "\n".join(
-                            f"[{e.type}] {e.message} {e.traceback}"
-                            for e in self._errors
-                        )
+            if is_exception:
+                raise ValidationError(
+                    "\n".join(
+                        f"[{e.type}] {e.message} {e.traceback}" for e in self._errors
                     )
-                }
-                if is_exception
-                else {
-                    "data": [
-                        {"type": e.type, "message": e.message, "context": e.context}
-                        for e in self._errors
-                    ]
-                }
-            )
+                )
+            response = {
+                "data": [
+                    {"type": e.type, "message": e.message, "context": e.context}
+                    for e in self._errors
+                ]
+            }
 
             return mo_response_kit.json_response(
                 "VALIDATION_ERR", category="danger", **response
@@ -843,20 +838,18 @@ class MindoffValidator:
             self._errors.append(item)
             return False if is_exception else None
 
-        response = (
-            {"exception": exc_type(message)}
-            if is_exception
-            else {
-                "data": [
-                    {
-                        "type": item.type,
-                        "message": item.message,
-                        "context": item.context,
-                    }
-                ]
-            }
-        )
+        if is_exception:
+            raise exc_type(message)
 
+        response = {
+            "data": [
+                {
+                    "type": item.type,
+                    "message": item.message,
+                    "context": item.context,
+                }
+            ]
+        }
         return mo_response_kit.json_response(
             "VALIDATION_ERR", category="danger", **response
         )

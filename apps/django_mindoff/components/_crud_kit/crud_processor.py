@@ -77,7 +77,7 @@ class CRUDProcessor:
                 table = model._meta.db_table
                 try:
                     if isinstance(df, pl.LazyFrame):
-                        df_schema = df.schema
+                        df_schema = df.collect_schema()
 
                         def write_batch(
                             df: pl.DataFrame,
@@ -92,7 +92,9 @@ class CRUDProcessor:
                             )
                             return pl.DataFrame(schema=expected_schema)
 
-                        df.map_batches(write_batch, streamable=True).collect()
+                        df.map_batches(write_batch, streamable=True).collect(
+                            engine="streaming"
+                        )
                     else:
                         df.write_database(
                             table_name=table,

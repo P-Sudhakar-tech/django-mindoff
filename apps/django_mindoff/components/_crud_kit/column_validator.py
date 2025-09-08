@@ -6,13 +6,39 @@ from django.db import models
 class ColumnValidator:
     def __init__(
         self,
-        df_dict: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+        model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
         is_add_missing_columns: bool = True,
         is_remove_extra_columns: bool = True,
     ):
-        self.df_dict = df_dict
+        self.model_frms = model_frms
         self.is_add_missing_columns = is_add_missing_columns
         self.is_remove_extra_columns = is_remove_extra_columns
+
+    def _validate_pk_and_fk_db_columns(self, model_cls: Type[models.Model]):
+        pk_field = model_cls._meta.pk
+
+        # 1. Ensure primary key is UUIDField
+        if not isinstance(pk_field, models.UUIDField):
+            raise ValueError(
+                f"Model {model_cls.__name__} must use UUIDField as primary key, "
+                f"but found {type(pk_field).__name__}."
+            )
+
+        # 2. Ensure PK has db_column defined
+        if not getattr(pk_field, "db_column", None):
+            raise ValueError(
+                f"Primary key field '{pk_field.name}' in model {model_cls.__name__} "
+                f"must explicitly define db_column."
+            )
+
+        # 3. Ensure all ForeignKeys have db_column defined
+        for field in model_cls._meta.concrete_fields:
+            if isinstance(field, models.ForeignKey):
+                if not getattr(field, "db_column", None):
+                    raise ValueError(
+                        f"ForeignKey field '{field.name}' in model {model_cls.__name__} "
+                        f"must explicitly define db_column."
+                    )
 
     def _get_model_field_mapping(self, model_cls: Type[models.Model]) -> Dict[str, str]:
         mapping = {}
@@ -36,7 +62,9 @@ class ColumnValidator:
         return auto_add_fields
 
     def _get_columns(self, df: Union[pl.DataFrame, pl.LazyFrame]) -> list[str]:
-        return list(df.schema.keys())
+        return list(
+            (df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema).keys()
+        )
 
     def _rename_to_field_names(
         self, df: Union[pl.DataFrame, pl.LazyFrame], reverse_map: Dict[str, str]
@@ -103,9 +131,10 @@ class ColumnValidator:
         valid_dfs = {}
         invalid_dfs = {}
 
-        for model_cls, df in self.df_dict.items():
+        for model_cls, df in self.model_frms.items():
             original_df = df
             try:
+                self._validate_pk_and_fk_db_columns(model_cls)
                 field_map = self._get_model_field_mapping(model_cls)
                 reverse_map = {v: k for k, v in field_map.items() if v != k}
 
@@ -147,12 +176,12 @@ class ColumnValidator:
                 invalid_dfs[model_cls] = self._with_error_column(original_df, str(e))
 
         # Ensure all input models have an entry
-        for model_cls in self.df_dict:
+        for model_cls in self.model_frms:
             valid_dfs.setdefault(
                 model_cls,
                 (
                     pl.LazyFrame([])
-                    if isinstance(self.df_dict[model_cls], pl.LazyFrame)
+                    if isinstance(self.model_frms[model_cls], pl.LazyFrame)
                     else pl.DataFrame()
                 ),
             )
@@ -160,7 +189,7 @@ class ColumnValidator:
                 model_cls,
                 (
                     pl.LazyFrame([])
-                    if isinstance(self.df_dict[model_cls], pl.LazyFrame)
+                    if isinstance(self.model_frms[model_cls], pl.LazyFrame)
                     else pl.DataFrame()
                 ),
             )
