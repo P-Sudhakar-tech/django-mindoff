@@ -2,7 +2,7 @@ import uuid
 import os
 import tempfile
 from django.conf import settings
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from urllib.parse import quote_plus
 from typing import Dict, Union, Type, Literal
 import polars as pl
@@ -56,56 +56,55 @@ class CRUDProcessor:
         def wrapper(self, *args, **kwargs):
             start = time.time()
             try:
-                result = func(self, *args, **kwargs)
-                success = True
+                affected_tables = func(self, *args, **kwargs)
+                return {
+                    "message": "Database Operation successful",
+                    "affected_tables": affected_tables,
+                    "time_taken_seconds": round(time.time() - start, 4),
+                }
             except Exception as e:
-                result = {"error": str(e)}
-                success = False
-            return {
-                "success": success,
-                "result": result,
-                "time_taken_seconds": round(time.time() - start, 4),
-            }
+                raise RuntimeError(f"CRUD operation failed on table: {e}") from e
 
         return wrapper
 
     @_track_time
-    def create(self) -> dict:
-        results = {}
+    def create(self) -> list[str]:
+        saved_tables = []
         with self.engine.begin() as conn:
             for model, df in self.model_frame_map.items():
                 table = model._meta.db_table
-                try:
-                    if isinstance(df, pl.LazyFrame):
-                        df_schema = df.collect_schema()
+                inspector = inspect(conn)
+                if table not in inspector.get_table_names():
+                    raise ValueError(f"Table '{table}' does not exist.")
 
-                        def write_batch(
-                            df: pl.DataFrame,
-                            table_name=table,
-                            expected_schema=df_schema,
-                        ) -> pl.DataFrame:
-                            df.write_database(
-                                table_name=table_name,
-                                connection=conn,
-                                if_table_exists="append",
-                                engine="sqlalchemy",
-                            )
-                            return pl.DataFrame(schema=expected_schema)
+                if isinstance(df, pl.LazyFrame):
+                    df_schema = df.collect_schema()
 
-                        df.map_batches(write_batch, streamable=True).collect(
-                            engine="streaming"
-                        )
-                    else:
+                    def write_batch(
+                        df: pl.DataFrame,
+                        table_name=table,
+                        expected_schema=df_schema,
+                    ) -> pl.DataFrame:
                         df.write_database(
-                            table_name=table,
+                            table_name=table_name,
                             connection=conn,
                             if_table_exists="append",
                             engine="sqlalchemy",
                         )
-                    results[table] = "Success"
-                except Exception as e:
-                    raise RuntimeError(f"Failed to insert into {table}: {e}") from e
-        return results
+                        return pl.DataFrame(schema=expected_schema)
+
+                    df.map_batches(write_batch, streamable=True).collect(
+                        engine="streaming"
+                    )
+                else:
+                    df.write_database(
+                        table_name=table,
+                        connection=conn,
+                        if_table_exists="append",
+                        engine="sqlalchemy",
+                    )
+                saved_tables.append(table)
+        return saved_tables
 
     # def _save_via_lazy_chunks(self, lf: pl.LazyFrame, table: str, conn):
     #     total_rows_est = lf.fetch(1).height  # Quick way to estimate

@@ -180,7 +180,7 @@ class MindoffTestCase:
             counts: List[int] = [],
             exclude_columns: List[List[str]] = [],
             modify: List[dict] = [],
-            fk_to_id: bool = False,
+            is_fk_as_id: bool = False,
             is_enforce_db_column: bool = True,
         ) -> dict[Type, pl.DataFrame]:
             counts = counts or [1] * len(models)
@@ -194,7 +194,7 @@ class MindoffTestCase:
                 )
                 baked_objects_per_model.append(objs)
                 df = pl.DataFrame(
-                    [_obj_to_dict(obj, fk_to_id=fk_to_id) for obj in objs]
+                    [_obj_to_dict(obj, is_fk_as_id=is_fk_as_id) for obj in objs]
                 )
                 if is_enforce_db_column:
                     field_map = {
@@ -333,12 +333,12 @@ def _validate_model(model_class):
         test_case.fail(f"Querying model failed: {e}")
 
 
-def _obj_to_dict(obj, fk_to_id=True):
+def _obj_to_dict(obj, is_fk_as_id=True):
     """Convert a Django model instance to dict, optionally replacing FK fields with PKs."""
     result = {}
     for field in obj._meta.fields:
         val = getattr(obj, field.name)
-        if fk_to_id and hasattr(field, "related_model") and val is not None:
+        if is_fk_as_id and hasattr(field, "related_model") and val is not None:
             val = val.pk
         result[field.name] = val
     return result

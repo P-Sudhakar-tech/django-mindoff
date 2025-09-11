@@ -28,6 +28,7 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django_mindoff.components.helper_kit import mo_helper_kit
 from django_mindoff.components.validation_kit import mo_validation_kit
+from ._tdd_kit import field_value_generator
 
 # ==========================================================
 # 2. CONSTANTS
@@ -190,8 +191,9 @@ class MindoffTestCase:
             counts: List[int] = [],
             exclude_columns: List[List[str]] = [],
             modify: List[dict] = [],
-            fk_to_id: bool = False,
+            is_fk_as_id: bool = True,
             is_enforce_db_column: bool = True,
+            is_uuid_hex: bool = True,
         ) -> dict[Type, pl.DataFrame]:
             counts = counts or [1] * len(models)
             exclude_columns = exclude_columns or []
@@ -200,11 +202,11 @@ class MindoffTestCase:
             baked_objects_per_model = []
             for idx, model in enumerate(models):
                 objs = _generate_model_factory_objects(
-                    idx, model, models, baked_objects_per_model, counts
+                    idx, model, models, baked_objects_per_model, counts, is_uuid_hex
                 )
                 baked_objects_per_model.append(objs)
                 df = pl.DataFrame(
-                    [_obj_to_dict(obj, fk_to_id=fk_to_id) for obj in objs]
+                    [_obj_to_dict(obj, is_fk_as_id=is_fk_as_id) for obj in objs]
                 )
                 if is_enforce_db_column:
                     field_map = {
@@ -361,19 +363,20 @@ def _validate_model(model_class):
         test_case.fail(f"Querying model failed: {e}")
 
 
-def _obj_to_dict(obj, fk_to_id=True):
+def _obj_to_dict(obj, is_fk_as_id):
     """Convert a Django model instance to dict, optionally replacing FK fields with PKs."""
     result = {}
     for field in obj._meta.fields:
         val = getattr(obj, field.name)
-        if fk_to_id and hasattr(field, "related_model") and val is not None:
-            val = val.pk
+        if is_fk_as_id and hasattr(field, "related_model") and val is not None:
+            if hasattr(val, "pk"):
+                val = val.pk
         result[field.name] = val
     return result
 
 
 def _generate_model_factory_objects(
-    idx, model, models, baked_objects_per_model, counts
+    idx, model, models, baked_objects_per_model, counts, is_uuid_hex
 ):
     n_per_parent = counts[idx]
 
@@ -388,7 +391,7 @@ def _generate_model_factory_objects(
     objs = []
 
     if not fk_fields_map:  # top-level
-        baked = _prepare_with_constraints(model, quantity=n_per_parent)
+        baked = _prepare_with_constraints(model, is_uuid_hex, quantity=n_per_parent)
         return baked if isinstance(baked, list) else [baked]
 
     immediate_parent_name, immediate_parent_objs = list(fk_fields_map.items())[-1]
@@ -408,13 +411,15 @@ def _generate_model_factory_objects(
                 fk_kwargs[fk_name] = fk_list[0]
 
         objs.extend(
-            _prepare_with_constraints(model, quantity=n_per_parent, **fk_kwargs)
+            _prepare_with_constraints(
+                model, is_uuid_hex, quantity=n_per_parent, **fk_kwargs
+            )
         )
 
     return objs
 
 
-def _prepare_with_constraints(model, quantity=1, **fk_kwargs):
+def _prepare_with_constraints(model, is_uuid_hex, quantity=1, **fk_kwargs):
     objs = []
     used_uniques = {}
 
@@ -424,142 +429,15 @@ def _prepare_with_constraints(model, quantity=1, **fk_kwargs):
         for field in model._meta.fields:
             if field.name in kwargs:
                 continue
-
-            value = _generate_field_value(field, used_uniques, kwargs)
+            value = field_value_generator.generate_field_value(
+                field, used_uniques, kwargs, is_uuid_hex
+            )
             if value is not None:
                 kwargs[field.name] = value
 
         objs.append(baker.prepare(model, **kwargs))
 
     return objs
-
-
-def _generate_field_value(field, used_uniques, partial_kwargs):
-    """
-    Generate a value that respects Django field constraints,
-    including unique, unique_for_date/month/year.
-    """
-
-    # Defaults
-    if field.has_default():
-        return field.get_default()
-
-    # Handle null
-    if getattr(field, "null", False) and random.random() < 0.1:
-        return None
-
-    # Handle blank
-    if getattr(field, "blank", False) and random.random() < 0.1:
-        return ""
-
-    # Helper for uniqueness tracking
-    def _register_unique(value, key):
-        if value in used_uniques.setdefault(key, set()):
-            return False
-        used_uniques[key].add(value)
-        return True
-
-    # CharField / TextField
-    if field.get_internal_type() in ["CharField", "TextField"]:
-        max_len = getattr(field, "max_length", 20) or 20
-        while True:
-            value = "".join(random.choices(string.ascii_letters, k=min(max_len, 10)))
-
-            if getattr(field, "unique", False):
-                if not _register_unique(value, field.name):
-                    continue
-
-            # unique_for_date/month/year
-            for attr in ["unique_for_date", "unique_for_month", "unique_for_year"]:
-                related = getattr(field, attr, None)
-                if related:
-                    dt_val = partial_kwargs.get(related)
-                    if not dt_val:
-                        break  # related field not yet generated
-                    if attr == "unique_for_date":
-                        key = f"{field.name}:date"
-                        unique_key = (value, dt_val.date())
-                    elif attr == "unique_for_month":
-                        key = f"{field.name}:month"
-                        unique_key = (value, dt_val.year, dt_val.month)
-                    elif attr == "unique_for_year":
-                        key = f"{field.name}:year"
-                        unique_key = (value, dt_val.year)
-                    if not _register_unique(unique_key, key):
-                        continue
-            return value
-
-    # IntegerField
-    if field.get_internal_type() in [
-        "IntegerField",
-        "SmallIntegerField",
-        "BigIntegerField",
-    ]:
-        min_value, max_value = -1000, 1000
-        for v in getattr(field, "validators", []):
-            if isinstance(v, MinValueValidator):
-                min_value = max(min_value, v.limit_value)
-            if isinstance(v, MaxValueValidator):
-                max_value = min(max_value, v.limit_value)
-
-        while True:
-            value = random.randint(min_value, max_value)
-            if getattr(field, "unique", False):
-                if not _register_unique(value, field.name):
-                    continue
-            return value
-
-    # DecimalField
-    if field.get_internal_type() == "DecimalField":
-        max_digits = getattr(field, "max_digits", 5) or 5
-        decimal_places = getattr(field, "decimal_places", 2) or 2
-        max_value = Decimal(10) ** (max_digits - decimal_places)
-        while True:
-            value = Decimal(random.uniform(0, float(max_value)))
-            value = value.quantize(Decimal(10) ** -decimal_places)
-            if getattr(field, "unique", False):
-                if not _register_unique(value, field.name):
-                    continue
-            return value
-
-    # FloatField
-    if field.get_internal_type() == "FloatField":
-        return random.uniform(0, 1000)
-
-    # BooleanField
-    if field.get_internal_type() == "BooleanField":
-        return random.choice([True, False])
-
-    # Date / DateTime
-    if field.get_internal_type() == "DateField":
-        return datetime.date.today()
-    if field.get_internal_type() == "DateTimeField":
-        return datetime.datetime.now()
-
-    # UUIDField
-    if field.get_internal_type() == "UUIDField":
-        while True:
-            value = uuid.uuid4()
-            if getattr(field, "unique", False):
-                if not _register_unique(value, field.name):
-                    continue
-            return value
-
-    # SlugField
-    if field.get_internal_type() == "SlugField":
-        while True:
-            value = "".join(random.choices(string.ascii_lowercase, k=8))
-            if getattr(field, "unique", False):
-                if not _register_unique(value, field.name):
-                    continue
-            return value
-
-    # Fallback (relations, etc.)
-    return (
-        baker.prepare(field.related_model)
-        if getattr(field, "related_model", None)
-        else None
-    )
 
 
 def _apply_exclude_columns(idx, df, exclude_columns: List[List[str]]):

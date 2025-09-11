@@ -469,7 +469,7 @@ class RowValidator:
 
         def transform(col: pl.Series) -> pl.Series:
             col = col.cast(pl.Utf8).str.strip_chars()
-            uuid_regex = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+            uuid_regex = r"^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$"
             is_invalid = col.is_not_null() & ~col.str.contains(uuid_regex)
             col = pl.when(is_invalid).then(None).otherwise(col)
             col = col.str.to_lowercase().str.replace_all("-", "")

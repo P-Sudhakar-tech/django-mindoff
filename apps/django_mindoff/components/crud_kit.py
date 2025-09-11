@@ -5,17 +5,24 @@
 4. mo_crud_kit.read(model, filter_conditions, columns, is_streaming)
 """
 
-from typing import Dict, Tuple, Type, Union, List
-from typeguard import typechecked
+import warnings
 import polars as pl
+from itertools import islice
+from typing import Dict, Tuple, Type, Union, List, Literal, Any
+from typeguard import typechecked
 from django.db import models
+from django.db import connection
+from django.db.utils import NotSupportedError
+from django.core.paginator import Paginator, EmptyPage
 from types import SimpleNamespace
 from .response_kit import mo_response_kit
+from .validation_kit import mo_validation_kit
 from ._crud_kit.column_validator import ColumnValidator
 from ._crud_kit.row_validator import RowValidator
 from ._crud_kit.foreign_key_validator import ForeignKeyValidator
 from ._crud_kit.crud_processor import CRUDProcessor
 from .polars_kit import mo_polars_kit
+
 
 ERROR_COL = "__error__info"
 
@@ -171,14 +178,6 @@ def create(
     is_partial: bool = False,
     is_validate: bool = True,
 ) -> Tuple[str, Dict, Dict]:
-    """
-    Validate and create model instances from DataFrames.
-
-    Returns:
-        status: "ok", "fail", or "partial_ok"
-        valid_model_frms: dict of models with validated DataFrames
-        invalid_model_frms: dict of models with invalid DataFrames
-    """
     model_frms = mo_polars_kit.sync_model_frms_type(model_frms)
     if is_validate:
         # Step 1: Column validation
@@ -213,15 +212,131 @@ def create(
         else:
             status = "ok"
     else:
+        warnings.warn(
+            "Saving without validation may store unsafe or inconsistent data, "
+            "which can affect mindoff Polars read/update/delete. "
+            "Proceed only if intentional.",
+            RuntimeWarning,
+        )
         status = "ok"
         valid_model_frms, invalid_model_frms = model_frms, {}
 
     # Step 5: Perform CRUD operation
     crud_processor = CRUDProcessor(valid_model_frms)
-    crud_processor.create()
+    _ = crud_processor.create()
     return status, valid_model_frms, invalid_model_frms
 
 
-mo_crud_kit = SimpleNamespace(
-    create=create,
-)
+@typechecked
+def read(
+    qs: models.QuerySet,
+    *,
+    page_number: int | None = None,
+    is_lazy: bool = False,
+    batch_size: int = 0,
+) -> tuple[pl.DataFrame | pl.LazyFrame, dict[str, Any]]:
+    # 1. Validate and Normalize
+    mo_validation_kit.ensure(
+        issubclass(qs._iterable_class, models.query.ValuesIterable),
+        msg=f"Unsupported queryset type `{qs._iterable_class.__name__}`. "
+        "You must call `.values()` on the queryset before passing it to `read()`.",
+        is_exception=True,
+    )
+    mo_validation_kit.ensure_greater_equal(
+        batch_size,
+        0,
+        msg=f"The 'batch_size' parameter must be a positive integer. Provided value: {batch_size}",
+        is_exception=True,
+    )
+    if batch_size == 0:
+        batch_size = 100 if page_number else 1000
+
+    # 2. Empty Queryset
+    if not qs.exists():
+        df = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
+        stats = _build_stats(
+            mode="pagination" if page_number else "streaming",
+            batch_size=batch_size,
+            total_count=0,
+            total_pages=0,
+            current_page=page_number if page_number else 0,
+            has_next=False,
+            has_previous=False,
+        )
+        return df, stats
+
+    # 3. Streaming mode
+    if not page_number:
+        df = pl.concat(_batched_iterator(qs, batch_size, is_lazy), rechunk=False)
+        stats = _build_stats(
+            mode="streaming",
+            batch_size=batch_size,
+            total_count=qs.count(),
+            total_pages=0,
+            current_page=0,
+            has_next=False,
+            has_previous=False,
+        )
+        return df, stats
+
+    # 4. Pagination mode
+    paginator = Paginator(qs, batch_size)
+    try:
+        page = paginator.page(page_number)
+        df = pl.DataFrame(list(page)).lazy() if is_lazy else pl.DataFrame(list(page))
+        stats = _build_stats(
+            mode="pagination",
+            batch_size=batch_size,
+            total_count=paginator.count,
+            total_pages=paginator.num_pages,
+            current_page=page.number,
+            has_next=page.has_next(),
+            has_previous=page.has_previous(),
+        )
+    except EmptyPage:
+        df = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
+        stats = _build_stats(
+            mode="pagination",
+            batch_size=batch_size,
+            total_count=paginator.count,
+            total_pages=paginator.num_pages,
+            current_page=page_number,
+            has_next=False,
+            has_previous=page_number > 1,
+        )
+
+    return df, stats
+
+
+mo_crud_kit = SimpleNamespace(create=create, read=read)
+
+
+def _batched_iterator(qs: models.QuerySet, size: int, is_lazy: bool):
+    it = qs.iterator(chunk_size=size)
+    while True:
+        batch = list(islice(it, size))
+        if not batch:
+            break
+        yield pl.DataFrame(batch).lazy() if is_lazy else pl.DataFrame(batch)
+
+
+def _build_stats(
+    *,
+    mode: str,
+    batch_size: int,
+    total_count: int,
+    total_pages: int | None,
+    current_page: int | None,
+    has_next: bool,
+    has_previous: bool,
+) -> dict[str, Any]:
+    """Return a consistent stats dictionary."""
+    return {
+        "mode": mode,
+        "batch_size": batch_size,
+        "total_count": total_count,
+        "total_pages": total_pages,
+        "current_page": current_page,
+        "has_next": has_next,
+        "has_previous": has_previous,
+    }
