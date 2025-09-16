@@ -177,6 +177,7 @@ def create(
     model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
     is_partial: bool = False,
     is_validate: bool = True,
+    batch_size: int = 1000,
 ) -> Tuple[str, Dict, Dict]:
     model_frms = mo_polars_kit.sync_model_frms_type(model_frms)
     if is_validate:
@@ -214,7 +215,7 @@ def create(
     else:
         warnings.warn(
             "Saving without validation may store unsafe or inconsistent data, "
-            "which can affect mindoff Polars read/update/delete. "
+            "which can affect mindoff's read/update/delete functions. "
             "Proceed only if intentional.",
             RuntimeWarning,
         )
@@ -223,7 +224,7 @@ def create(
 
     # Step 5: Perform CRUD operation
     crud_processor = CRUDProcessor(valid_model_frms)
-    _ = crud_processor.create()
+    _ = crud_processor.create(batch_size=batch_size)
     return status, valid_model_frms, invalid_model_frms
 
 
@@ -254,7 +255,7 @@ def read(
     # 2. Empty Queryset
     if not qs.exists():
         df = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
-        stats = _build_stats(
+        stats = _read__build_stats(
             mode="pagination" if page_number else "streaming",
             batch_size=batch_size,
             total_count=0,
@@ -267,8 +268,8 @@ def read(
 
     # 3. Streaming mode
     if not page_number:
-        df = pl.concat(_batched_iterator(qs, batch_size, is_lazy), rechunk=False)
-        stats = _build_stats(
+        df = pl.concat(_read__batched_iterator(qs, batch_size, is_lazy), rechunk=False)
+        stats = _read__build_stats(
             mode="streaming",
             batch_size=batch_size,
             total_count=qs.count(),
@@ -284,7 +285,7 @@ def read(
     try:
         page = paginator.page(page_number)
         df = pl.DataFrame(list(page)).lazy() if is_lazy else pl.DataFrame(list(page))
-        stats = _build_stats(
+        stats = _read__build_stats(
             mode="pagination",
             batch_size=batch_size,
             total_count=paginator.count,
@@ -295,7 +296,7 @@ def read(
         )
     except EmptyPage:
         df = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
-        stats = _build_stats(
+        stats = _read__build_stats(
             mode="pagination",
             batch_size=batch_size,
             total_count=paginator.count,
@@ -308,10 +309,68 @@ def read(
     return df, stats
 
 
-mo_crud_kit = SimpleNamespace(create=create, read=read)
+@typechecked
+def update(
+    model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+    is_partial: bool = False,
+    is_validate: bool = True,
+    batch_size: int = 1000,
+    is_temp_table: bool = True,
+):
+    model_frms = _update__fill_missing_columns(model_frms, batch_size=batch_size)
+
+    if is_validate:
+        # Step 1: Column validation
+        column_validator = ColumnValidator(
+            model_frms=model_frms,
+            is_remove_extra_columns=True,
+            is_add_missing_columns=True,
+        )
+        valid_model_frms, invalid_model_frms = column_validator.run()
+        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+            return "fail", valid_model_frms, invalid_model_frms
+
+        # Step 2: Row validation
+        row_validator = RowValidator(valid_model_frms)
+        row_validated_frms = row_validator.run()
+
+        # Step 3: Foreign key validation
+        fk_validator = ForeignKeyValidator(row_validated_frms)
+        fk_validated_frms = fk_validator.validate()
+        frm_dict_valid_invalid_splitter = _ModelFrmsValidInvalidSplitter(
+            fk_validated_frms
+        )
+        valid_model_frms, invalid_model_frms = frm_dict_valid_invalid_splitter.run()
+
+        # Step 4: Decide partial save
+        if mo_polars_kit.is_model_frms_empty(valid_model_frms):
+            return "fail", valid_model_frms, invalid_model_frms
+        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+            if not is_partial:
+                return "fail", valid_model_frms, invalid_model_frms
+            status = "partial_ok"
+        else:
+            status = "ok"
+    else:
+        warnings.warn(
+            "Updating without validation may store unsafe or inconsistent data, "
+            "which can affect mindoff's read/update/delete functions. "
+            "Proceed only if intentional.",
+            RuntimeWarning,
+        )
+        status = "ok"
+        valid_model_frms, invalid_model_frms = model_frms, {}
+
+    # Step 5: Perform CRUD operation
+    crud_processor = CRUDProcessor(valid_model_frms)
+    _ = crud_processor.update(is_temp_table=is_temp_table, batch_size=batch_size)
+    return status, valid_model_frms, invalid_model_frms
 
 
-def _batched_iterator(qs: models.QuerySet, size: int, is_lazy: bool):
+mo_crud_kit = SimpleNamespace(create=create, read=read, update=update)
+
+
+def _read__batched_iterator(qs: models.QuerySet, size: int, is_lazy: bool):
     it = qs.iterator(chunk_size=size)
     while True:
         batch = list(islice(it, size))
@@ -320,7 +379,7 @@ def _batched_iterator(qs: models.QuerySet, size: int, is_lazy: bool):
         yield pl.DataFrame(batch).lazy() if is_lazy else pl.DataFrame(batch)
 
 
-def _build_stats(
+def _read__build_stats(
     *,
     mode: str,
     batch_size: int,
@@ -340,3 +399,84 @@ def _build_stats(
         "has_next": has_next,
         "has_previous": has_previous,
     }
+
+
+def _update__fill_missing_columns(
+    model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+    *,
+    batch_size: int,
+) -> Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]]:
+    updated_model_frames = {}
+
+    for model_cls, df in model_frms.items():
+        # 1. Find Missing Columns and primary key
+        df_cols = set(df.columns)
+        model_fields = {f.column or f.name for f in model_cls._meta.concrete_fields}
+        missing_cols = list(model_fields - df_cols)
+        pk_name = model_cls._meta.pk.name
+        pk_column = model_cls._meta.pk.column
+
+        pk_field = next((c for c in (pk_column, pk_name) if c in df_cols), None)
+        mo_validation_kit.ensure_truthy(
+            pk_field,
+            msg=f"Primary key {pk_field} must exist in DataFrame to fetch missing columns.",
+            is_exception=True,
+        )
+        if pk_field in missing_cols:
+            missing_cols.remove(pk_field)
+        if not missing_cols:
+            updated_model_frames[model_cls] = df
+            continue
+
+        # 2. Generate Missing Frame
+        schema = {pk_field: df.schema[pk_field], **dict.fromkeys(missing_cols, None)}
+        base_missing_df = (
+            pl.LazyFrame(schema=schema)
+            if isinstance(df, pl.LazyFrame)
+            else pl.DataFrame(schema=schema)
+        )
+        missing_df = __update__fetch_missing_chunks(
+            model_cls, df, pk_field, missing_cols, batch_size, base_missing_df
+        )
+
+        # 3. Cut off if no missing data to Merge
+        if mo_polars_kit.is_frm_empty(missing_df):
+            for col in missing_cols:
+                df = df.with_columns(pl.lit(None).alias(col))
+            updated_model_frames[model_cls] = df
+            continue
+
+        # 4. Check again and Final merge
+        overlap = set(df.columns) & set(missing_df.columns) - {pk_field}
+        mo_validation_kit.ensure_falsey(
+            overlap,
+            msg=f"Duplicate columns found during merge for model {model_cls.__name__}: {', '.join(overlap)}",
+            is_exception=True,
+        )
+        df = df.join(missing_df, on=pk_field, how="left")
+        updated_model_frames[model_cls] = df
+
+    return updated_model_frames
+
+
+def __update__fetch_missing_chunks(
+    model_cls,
+    df,
+    pk_field: str,
+    missing_cols: list[str],
+    batch_size: int,
+    base_missing_df,
+):
+    pk_series = df.select(pk_field) if isinstance(df, pl.LazyFrame) else df[pk_field]
+    missing_df = base_missing_df
+    for chunk in pk_series.iter_slices(n_rows=batch_size):
+        pk_chunk = chunk.to_list()
+        qs = model_cls.objects.filter(**{f"{pk_field}__in": pk_chunk}).values(
+            pk_field, *missing_cols
+        )
+        chunk_df, _ = read(
+            qs, is_lazy=isinstance(df, pl.LazyFrame), batch_size=batch_size
+        )
+        if not mo_polars_kit.is_frm_empty(chunk_df):
+            missing_df = pl.concat([missing_df, chunk_df], rechunk=False)
+    return missing_df

@@ -29,16 +29,19 @@ class ForeignKeyValidator:
                 continue
 
             db_col = field.db_column
-            if db_col not in df.columns:
-                raise ValueError(
-                    f"Missing foreign key column '{db_col}' in DataFrame for model '{model.__name__}'"
-                )
+            mo_validation_kit.ensure_in(
+                db_col,
+                df.columns,
+                msg=f"Missing foreign key column '{db_col}' in DataFrame for model '{model.__name__}'",
+                is_exception=True,
+            )
 
             related_model = field.related_model
             related_pk_field = related_model._meta.pk
             related_pk_col = (
                 related_pk_field.db_column or related_pk_field.attname or "id"
             )
+            related_pk_name = related_pk_field.attname
             if related_model in self.df_dict:
                 related_df = self.df_dict[related_model].select(
                     pl.col(related_pk_col).cast(pl.Utf8).alias(related_pk_col)
@@ -56,20 +59,20 @@ class ForeignKeyValidator:
                 if not fk_values:
                     continue
                 existing_count = related_model.objects.filter(
-                    **{f"{related_pk_col}__in": fk_values}
+                    **{f"{related_pk_name}__in": fk_values}
                 ).count()
                 is_invalid_fk = existing_count < len(fk_values)
-            if is_invalid_fk:
-                raise ValueError(
-                    f"Model '{model.__name__}' couldn't resolve foreign key(s) in column '{db_col}'."
-                )
+            mo_validation_kit.ensure_falsey(
+                is_invalid_fk,
+                msg=f"Model '{model.__name__}' couldn't resolve foreign key(s) in column '{db_col}'.",
+                is_exception=True,
+            )
         return df
 
     def _get_distinct_fk_values(
         self, df: pl.DataFrame | pl.LazyFrame, col: str
     ) -> list:
         try:
-            # Always narrow to only the FK column
             df_fk = df.select(pl.col(col).drop_nulls().cast(pl.Utf8).unique())
             if isinstance(df, pl.LazyFrame):
                 return df_fk.collect(engine="streaming").get_column(col).to_list()

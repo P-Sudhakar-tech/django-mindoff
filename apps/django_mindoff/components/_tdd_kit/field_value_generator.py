@@ -26,11 +26,11 @@ class FieldValueGenerator:
                 value = value.hex
             return value
 
-        if self._maybe_null():
-            return None
-
-        if self._maybe_blank():
-            return ""
+        # null_blank_decision = self._choose_null_blank_outcome()
+        # if null_blank_decision == "null":
+        #     return None
+        # elif null_blank_decision == "blank":
+        #     return ""
 
         field_type = self.field.get_internal_type()
         method_name = f"_gen_{field_type.lower()}"
@@ -43,11 +43,24 @@ class FieldValueGenerator:
 
     # ---------- Helpers ----------
 
-    def _maybe_null(self):
-        return getattr(self.field, "null", False) and random.random() < 0.1
-
-    def _maybe_blank(self):
-        return getattr(self.field, "blank", False) and random.random() < 0.1
+    def _choose_null_blank_outcome(self):
+        """Decide whether to return null, blank, or a value."""
+        allow_null = getattr(self.field, "null", False)
+        allow_blank = getattr(self.field, "blank", False)
+        r = random.random()
+        if allow_null and allow_blank:
+            if r < 0.01:
+                outcome = "null"
+            elif r < 0.02:
+                outcome = "blank"
+            else:
+                outcome = "value"
+            return outcome
+        if allow_null:
+            return "null" if r < 0.6 else "value"
+        if allow_blank:
+            return "blank" if r < 0.2 else "value"
+        return "value"
 
     def _register_unique(self, value, key=None):
         key = key or self.field.name
@@ -58,10 +71,10 @@ class FieldValueGenerator:
 
     # ---------- Generators ----------
 
-    def _gen_char_field(self):
+    def _gen_charfield(self):
         return self._gen_text()
 
-    def _gen_text_field(self):
+    def _gen_textfield(self):
         return self._gen_text()
 
     def _gen_text(self):
@@ -102,13 +115,13 @@ class FieldValueGenerator:
                 return False
         return True
 
-    def _gen_integer_field(self):
+    def _gen_integerfield(self):
         return self._gen_int()
 
-    def _gen_small_integer_field(self):
+    def _gen_smallintegerfield(self):
         return self._gen_int()
 
-    def _gen_big_integer_field(self):
+    def _gen_bigintegerfield(self):
         return self._gen_int()
 
     def _gen_int(self):
@@ -126,7 +139,7 @@ class FieldValueGenerator:
                     continue
             return value
 
-    def _gen_decimal_field(self):
+    def _gen_decimalfield(self):
         max_digits = getattr(self.field, "max_digits", 5) or 5
         decimal_places = getattr(self.field, "decimal_places", 2) or 2
         max_value = Decimal(10) ** (max_digits - decimal_places)
@@ -139,19 +152,19 @@ class FieldValueGenerator:
                     continue
             return value
 
-    def _gen_float_field(self):
+    def _gen_floatfield(self):
         return random.uniform(0, 1000)
 
-    def _gen_boolean_field(self):
+    def _gen_booleanfield(self):
         return random.choice([True, False])
 
-    def _gen_date_field(self):
+    def _gen_datefield(self):
         return datetime.date.today()
 
-    def _gen_datetime_field(self):
+    def _gen_datetimefield(self):
         return datetime.datetime.now()
 
-    def _gen_uuid_field(self):
+    def _gen_uuidfield(self):
         while True:
             raw_uuid = uuid.uuid4()
             if self.is_uuid_hex:
@@ -164,7 +177,7 @@ class FieldValueGenerator:
                     continue
             return value
 
-    def _gen_slug_field(self):
+    def _gen_slugfield(self):
         while True:
             value = "".join(random.choices(string.ascii_lowercase, k=8))
             if getattr(self.field, "unique", False):

@@ -28,9 +28,11 @@ from apps.django_mindoff.components.crud_kit import mo_crud_kit
 from apps.django_mindoff.components.polars_kit import mo_polars_kit
 from apps.django_mindoff.components.validation_kit import ValidationError
 
+shared_uuid_author_book_relation = str(uuid.uuid4().hex)
+
 
 @pytest.mark.django_db(transaction=True)
-class TestValidateCreateCrud(MindoffTestCase):
+class TestCreateCrud(MindoffTestCase):
     @pytest.mark.parametrize("is_lazy", [False, True])
     @pytest.mark.parametrize(
         "case_name, remove_columns, modify_rows, is_partial, expected_status",
@@ -619,3 +621,486 @@ class TestReadCrud(MindoffTestCase):
         )
         mo_crud_kit.create(df_dict, is_partial=False)
         return author_model, book_model
+
+
+@pytest.mark.django_db(transaction=True)
+class TestUpdateCrud(MindoffTestCase):
+    @pytest.mark.parametrize("is_lazy", [False, True])
+    @pytest.mark.parametrize("is_temp_table", [False, True])
+    @pytest.mark.parametrize(
+        "case_name, remove_columns, modify_rows, model_scope, update_mode, expected_status",
+        [
+            # ---------------- VALID ----------------
+            (
+                "update_all_main",
+                [],
+                [],
+                "main",
+                "update",
+                "ok",
+            ),
+            (
+                "update_all_sub",
+                [],
+                [],
+                "sub",
+                "update",
+                "ok",
+            ),
+            (
+                "update_all_main_and_sub",
+                [],
+                [],
+                "both",
+                "update",
+                "ok",
+            ),
+            ("update_same_values_main", [], [], "main", "update", "ok"),
+            ("update_same_values_sub", [], [], "sub", "update", "ok"),
+            ("update_same_values_main_and_sub", [], [], "both", "update", "ok"),
+            (
+                "update_partial_cols_main",
+                [],
+                [{0: {"nickname": "Nick"}}],
+                "main",
+                "update",
+                "ok",
+            ),
+            (
+                "update_partial_cols_sub",
+                [],
+                [{}, {0: {"edition": "First"}}],
+                "sub",
+                "update",
+                "ok",
+            ),
+            (
+                "update_partial_cols_both",
+                [],
+                [{0: {"nickname": "Nick"}}, {0: {"edition": "First"}}],
+                "both",
+                "update",
+                "ok",
+            ),
+            (
+                "upsert_non_existing_main",
+                [],
+                [{0: {"author_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
+                "main",
+                "upsert",
+                "ok",
+            ),
+            (
+                "upsert_non_existing_sub",
+                [],
+                [
+                    {},
+                    {
+                        0: {
+                            "book_id": str(uuid.uuid4().hex),
+                            "title": "Inserted Book",
+                            "pages": 123,
+                        }
+                    },
+                ],
+                "sub",
+                "upsert",
+                "ok",
+            ),
+            (
+                "upsert_non_existing_both",
+                [],
+                [
+                    {
+                        0: {
+                            "author_id": shared_uuid_author_book_relation,
+                            "name": "Inserted Author",
+                            "nickname": "Inserted Book",
+                        }
+                    },
+                    {
+                        0: {
+                            "book_id": str(uuid.uuid4().hex),
+                            "edition": "Inserted Book Edition",
+                            "title": "Inserted Book Title",
+                            "author_id": shared_uuid_author_book_relation,
+                        }
+                    },
+                ],
+                "both",
+                "upsert",
+                "ok",
+            ),
+        ],
+    )
+    def test_update_with_validation(
+        self,
+        case_name,
+        remove_columns,
+        modify_rows,
+        model_scope,
+        update_mode,
+        expected_status,
+        is_temp_table,
+        is_lazy,
+    ):
+        # 1. Create app + models
+        app_name = self.mo_mock_app()
+        author_model = self.mo_mock_model(
+            model_name="AuthorModel",
+            app_name=app_name,
+            fields={
+                "name": models.CharField(max_length=50),
+                "nickname": models.CharField(max_length=50, blank=True, null=True),
+            },
+        )
+        book_model = self.mo_mock_model(
+            model_name="BookModel",
+            app_name=app_name,
+            fields={
+                "title": models.CharField(max_length=100),
+                "pages": models.IntegerField(),
+                "edition": models.CharField(max_length=50, blank=True, null=True),
+                "summary": models.TextField(blank=True, null=True),
+            },
+            foreign_keys=[(author_model._meta.app_label, author_model.__name__)],
+        )
+
+        # 2. Create initial data (parent + child)
+        df_dict = self.mo_mock_model_dfs(
+            models=[author_model, book_model],
+            counts=[3, 1],
+        )
+        if is_lazy:
+            df_dict = self._convert_to_lazy_dict(df_dict)
+
+        # 3. Ensure initial data saved
+        created_status, created_valid_dfs, created_invalid_dfs = mo_crud_kit.create(
+            df_dict
+        )
+        if is_lazy:
+            created_valid_dfs = mo_polars_kit.collect_model_frms(
+                created_valid_dfs, streaming=True
+            )
+            created_invalid_dfs = mo_polars_kit.collect_model_frms(
+                created_invalid_dfs, streaming=True
+            )
+        assert created_status == "ok"
+
+        # 4. Prepare update DataFrames
+        update_dict = self.mo_mock_model_dfs_update(
+            created_valid_dfs,
+            exclude_columns=remove_columns,
+            modify=modify_rows,
+            counts=[3, 1, 1],
+        )
+        scopes = {
+            "main": slice(0, 1),
+            "sub": slice(1, 2),
+            "both": slice(None),
+        }
+        update_df_list = list(update_dict.items())[scopes[model_scope]]
+        update_dict = dict(update_df_list)
+        if is_lazy:
+            update_dict = self._convert_to_lazy_dict(update_dict)
+
+        # 5. Run update
+        if expected_status == "raise":
+            with pytest.raises(ValueError):
+                mo_crud_kit.update(update_dict, is_temp_table=is_temp_table)
+            return
+        updated_status, updated_valid_dfs, updated_invalid_dfs = mo_crud_kit.update(
+            update_dict, is_temp_table=is_temp_table
+        )
+        if is_lazy:
+            updated_valid_dfs = mo_polars_kit.collect_model_frms(
+                updated_valid_dfs, streaming=True
+            )
+            updated_invalid_dfs = mo_polars_kit.collect_model_frms(
+                updated_invalid_dfs, streaming=True
+            )
+
+        # 6. Update Assertions
+        assert case_name is not None
+        assert updated_status == expected_status
+        for df in updated_valid_dfs.values():
+            assert "__error__info" not in df.columns
+        for df in updated_invalid_dfs.values():
+            assert "__error__info" in df.columns
+        if expected_status == "ok":
+            assert not mo_polars_kit.is_model_frms_empty(updated_valid_dfs)
+            assert mo_polars_kit.is_model_frms_empty(updated_invalid_dfs)
+            self._assert_db_matches(updated_valid_dfs)
+
+    @pytest.mark.parametrize("is_lazy", [False, True])
+    @pytest.mark.parametrize("is_temp_table", [False, True])
+    @pytest.mark.parametrize(
+        "case_name, remove_columns, modify_rows, model_scope, update_mode, expected_status",
+        [
+            # ---------------- VALID ----------------
+            (
+                "update_all_main",
+                [],
+                [],
+                "main",
+                "update",
+                "ok",
+            ),
+            (
+                "update_all_sub",
+                [],
+                [],
+                "sub",
+                "update",
+                "ok",
+            ),
+            (
+                "update_all_main_and_sub",
+                [],
+                [],
+                "both",
+                "update",
+                "ok",
+            ),
+            ("update_same_values_main", [], [], "main", "update", "ok"),
+            ("update_same_values_sub", [], [], "sub", "update", "ok"),
+            ("update_same_values_main_and_sub", [], [], "both", "update", "ok"),
+            (
+                "update_partial_cols_main",
+                [],
+                [{0: {"nickname": "Nick"}}],
+                "main",
+                "update",
+                "ok",
+            ),
+            (
+                "update_partial_cols_sub",
+                [],
+                [{}, {0: {"edition": "First"}}],
+                "sub",
+                "update",
+                "ok",
+            ),
+            (
+                "update_partial_cols_both",
+                [],
+                [{0: {"nickname": "Nick"}}, {0: {"edition": "First"}}],
+                "both",
+                "update",
+                "ok",
+            ),
+            (
+                "upsert_non_existing_main",
+                [],
+                [{0: {"author_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
+                "main",
+                "upsert",
+                "ok",
+            ),
+            (
+                "upsert_non_existing_sub",
+                [],
+                [
+                    {},
+                    {
+                        0: {
+                            "book_id": str(uuid.uuid4().hex),
+                            "title": "Inserted Book",
+                            "pages": 123,
+                        }
+                    },
+                ],
+                "sub",
+                "upsert",
+                "ok",
+            ),
+            (
+                "upsert_non_existing_both",
+                [],
+                [
+                    {
+                        0: {
+                            "author_id": shared_uuid_author_book_relation,
+                            "name": "Inserted Author",
+                            "nickname": "Inserted Book",
+                        }
+                    },
+                    {
+                        0: {
+                            "book_id": str(uuid.uuid4().hex),
+                            "edition": "Inserted Book Edition",
+                            "title": "Inserted Book Title",
+                            "author_id": shared_uuid_author_book_relation,
+                        }
+                    },
+                ],
+                "both",
+                "upsert",
+                "ok",
+            ),
+        ],
+    )
+    def test_update_without_validation(
+        self,
+        case_name,
+        remove_columns,
+        modify_rows,
+        model_scope,
+        update_mode,
+        expected_status,
+        is_temp_table,
+        is_lazy,
+    ):
+        # 1. Create app + models
+        app_name = self.mo_mock_app()
+        author_model = self.mo_mock_model(
+            model_name="AuthorModel",
+            app_name=app_name,
+            fields={
+                "name": models.CharField(max_length=50),
+                "nickname": models.CharField(max_length=50, blank=True, null=True),
+            },
+        )
+        book_model = self.mo_mock_model(
+            model_name="BookModel",
+            app_name=app_name,
+            fields={
+                "title": models.CharField(max_length=100),
+                "pages": models.IntegerField(),
+                "edition": models.CharField(max_length=50, blank=True, null=True),
+                "summary": models.TextField(blank=True, null=True),
+            },
+            foreign_keys=[(author_model._meta.app_label, author_model.__name__)],
+        )
+
+        # 2. Create initial data (parent + child)
+        df_dict = self.mo_mock_model_dfs(
+            models=[author_model, book_model],
+            counts=[3, 1],
+        )
+        if is_lazy:
+            df_dict = self._convert_to_lazy_dict(df_dict)
+
+        # 3. Ensure initial data saved
+        created_status, created_valid_dfs, created_invalid_dfs = mo_crud_kit.create(
+            df_dict
+        )
+        if is_lazy:
+            created_valid_dfs = mo_polars_kit.collect_model_frms(
+                created_valid_dfs, streaming=True
+            )
+            created_invalid_dfs = mo_polars_kit.collect_model_frms(
+                created_invalid_dfs, streaming=True
+            )
+        assert created_status == "ok"
+
+        # 4. Prepare update DataFrames
+        update_dict = self.mo_mock_model_dfs_update(
+            created_valid_dfs,
+            exclude_columns=remove_columns,
+            modify=modify_rows,
+            counts=[3, 1, 1],
+        )
+        scopes = {
+            "main": slice(0, 1),
+            "sub": slice(1, 2),
+            "both": slice(None),
+        }
+        update_df_list = list(update_dict.items())[scopes[model_scope]]
+        update_dict = dict(update_df_list)
+        if is_lazy:
+            update_dict = self._convert_to_lazy_dict(update_dict)
+
+        # 5. Run update
+        if expected_status == "raise":
+            with pytest.raises(ValueError):
+                mo_crud_kit.update(
+                    update_dict, is_temp_table=is_temp_table, is_validate=False
+                )
+            return
+        updated_status, updated_valid_dfs, updated_invalid_dfs = mo_crud_kit.update(
+            update_dict, is_temp_table=is_temp_table, is_validate=False
+        )
+        if is_lazy:
+            updated_valid_dfs = mo_polars_kit.collect_model_frms(
+                updated_valid_dfs, streaming=True
+            )
+            updated_invalid_dfs = mo_polars_kit.collect_model_frms(
+                updated_invalid_dfs, streaming=True
+            )
+
+        # 6. Update Assertions
+        assert case_name is not None
+        assert updated_status == expected_status
+        for df in updated_valid_dfs.values():
+            assert "__error__info" not in df.columns
+        for df in updated_invalid_dfs.values():
+            assert "__error__info" in df.columns
+        if expected_status == "ok":
+            assert not mo_polars_kit.is_model_frms_empty(updated_valid_dfs)
+            assert mo_polars_kit.is_model_frms_empty(updated_invalid_dfs)
+            self._assert_db_matches(updated_valid_dfs)
+
+    def _convert_to_lazy_dict(self, df_dict: dict):
+        model_ldf = {}
+        for k, v in df_dict.items():
+            if isinstance(v, pl.DataFrame):
+                model_ldf[k] = v.lazy()
+            else:
+                model_ldf[k] = v
+        return model_ldf
+
+    def _assert_db_matches(self, valid_dfs: dict[type[models.Model], pl.DataFrame]):
+        for model, df in valid_dfs.items():
+            pk_field = model._meta.pk.name
+            pk_column = model._meta.pk.column
+            pks = df[pk_column].to_list()
+            db_rows = model.objects.filter(**{f"{pk_field}__in": pks}).values()
+            db_df = pl.DataFrame(list(db_rows))
+            assert not mo_polars_kit.is_frm_empty(
+                db_df
+            ), f"{model.__name__}: no rows found in database"
+            db_df = self._validate_and_normalize_db_df(db_df, model)
+            assert db_df.shape[0] == df.shape[0], (
+                f"{model.__name__}: row count mismatch "
+                f"(expected {df.shape[0]}, got {db_df.shape[0]})"
+            )
+            for col in df.columns:
+                if col not in db_df.columns:
+                    continue
+                expected = df.sort(by=pk_column)[col]
+                actual = db_df.sort(by=pk_column)[col]
+                pl_testing.assert_series_equal(
+                    expected,
+                    actual,
+                    check_names=True,
+                    check_dtype=False,
+                    check_exact=True,
+                )
+
+    def _validate_and_normalize_db_df(
+        self, db_df: pl.DataFrame | pl.LazyFrame, model: type[models.Model]
+    ):
+        fields = list(model._meta.concrete_fields)
+        for f in fields:
+            pk_field = f.name
+            pk_column = f.column
+            if pk_field != pk_column and pk_field in db_df.columns:
+                db_df = db_df.rename({pk_field: pk_column})
+            if isinstance(
+                f, (models.UUIDField, models.ForeignKey, models.OneToOneField)
+            ):
+                col_name = pk_column or pk_field
+                if col_name in db_df.columns:
+                    db_df = db_df.with_columns(
+                        db_df[col_name]
+                        .map_elements(lambda x: str(x) if x is not None else None)
+                        .str.to_lowercase()
+                        .str.replace_all("-", "")
+                        .cast(pl.Utf8)
+                        .alias(col_name)
+                    )
+        expected_cols = [f.column or f.name for f in fields]
+        missing = [c for c in expected_cols if c not in db_df.columns]
+        assert len(missing) == 0, f"Missing columns {model.__name__}: {missing}"
+        return db_df

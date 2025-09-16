@@ -52,6 +52,9 @@ class MindoffTestCase:
         self.mo_mock_model = request.getfixturevalue("_mo_mock_model")
         self.init_temp_dir = request.getfixturevalue("_init_temp_dir")
         self.mo_mock_model_dfs = request.getfixturevalue("_mo_mock_model_dfs")
+        self.mo_mock_model_dfs_update = request.getfixturevalue(
+            "_mo_mock_model_dfs_update"
+        )
         if hasattr(mo_validation_kit, "reset"):
             mo_validation_kit.reset()
 
@@ -221,6 +224,60 @@ class MindoffTestCase:
             return df_dict
 
         return __bake_model_df_dict
+
+    @pytest.fixture
+    def _mo_mock_model_dfs_update(self, request):
+        @typechecked
+        def __update_model_df_dict(
+            df_dict: dict[Type, pl.DataFrame],
+            *,
+            counts: List[int] = [],
+            exclude_columns: List[List[str]] = [],
+            modify: List[dict] = [],
+            keep_columns: List[List[str]] = [],
+            is_uuid_hex: bool = True,
+        ) -> dict[Type, pl.DataFrame]:
+            updated_df_dict = {}
+            models = list(df_dict.keys())
+            counts = counts or [1] * len(models)
+            baked_objects_per_model = []
+            for idx, (model, df) in enumerate(df_dict.items()):
+                new_df = df.clone()
+                pk_name = model._meta.pk.db_column or model._meta.pk.attname
+                fk_cols = [
+                    (f.db_column or f.get_attname_column()[1])
+                    for f in model._meta.concrete_fields
+                    if f.is_relation
+                ]
+                user_keep = set(keep_columns[idx] if idx < len(keep_columns) else [])
+                keep = {pk_name, *fk_cols, *user_keep}
+
+                update_cols = [c for c in new_df.columns if c not in keep]
+                new_df = _apply_exclude_columns(idx, new_df, exclude_columns)
+
+                objs = _generate_model_factory_objects(
+                    idx, model, models, baked_objects_per_model, counts, is_uuid_hex
+                )
+                baked_objects_per_model.append(objs)
+                new_data = pl.DataFrame(
+                    [_obj_to_dict(obj, is_fk_as_id=True) for obj in objs]
+                )
+                field_map = {
+                    f.name: (f.db_column or f.get_attname_column()[1])
+                    for f in model._meta.concrete_fields
+                    if hasattr(f, "attname")
+                }
+                new_data = new_data.rename(
+                    {col: field_map.get(col, col) for col in new_data.columns}
+                )
+                for col in update_cols:
+                    if col in new_data.columns:
+                        new_df = new_df.with_columns(new_data[col].alias(col))
+                new_df = _apply_modify(idx, new_df, modify)
+                updated_df_dict[model] = new_df
+            return updated_df_dict
+
+        return __update_model_df_dict
 
 
 # ==========================================================
@@ -395,21 +452,15 @@ def _generate_model_factory_objects(
         return baked if isinstance(baked, list) else [baked]
 
     immediate_parent_name, immediate_parent_objs = list(fk_fields_map.items())[-1]
-
-    # replicate per immediate parent
     for parent_obj in immediate_parent_objs:
         fk_kwargs = {immediate_parent_name: parent_obj}
-
-        # assign other FKs from parent_obj if available
         for fk_name, fk_list in fk_fields_map.items():
             if fk_name == immediate_parent_name:
                 continue
             if hasattr(parent_obj, fk_name):
                 fk_kwargs[fk_name] = getattr(parent_obj, fk_name)
             else:
-                # fallback: pick first object from list
                 fk_kwargs[fk_name] = fk_list[0]
-
         objs.extend(
             _prepare_with_constraints(
                 model, is_uuid_hex, quantity=n_per_parent, **fk_kwargs
