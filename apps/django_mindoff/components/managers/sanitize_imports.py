@@ -35,43 +35,37 @@ class DjangoCodeOrganizer:
 
     def _resolve_files(self):
         """Resolve dotted paths (apps/files) into actual .py files"""
-        files: list[Path] = []
-
         if not self.targets:
             return list(Path.cwd().rglob("*.py"))
 
+        files: list[Path] = []
         for target in self.targets:
-            path = target.replace(".", "/")
-
-            # candidate bases: project root and apps/
-            candidates = [
-                Path.cwd() / path,
-                Path.cwd() / "apps" / path,
-            ]
-
-            match = None
-            for base in candidates:
-                py_file = base.with_suffix(".py")
-                folder = base if base.exists() and base.is_dir() else None
-
-                if py_file.exists() and folder:
-                    raise ValueError(
-                        f"⚠️ Ambiguous target '{target}': both '{py_file.name}' and '{folder.name}/' exist in {base.parent}"
-                    )
-
-                if folder:
-                    match = list(folder.rglob("*.py"))
-                    break
-                elif py_file.exists():
-                    match = [py_file]
-                    break
-
-            if match:
-                files.extend(match)
+            resolved = self._resolve_target(target)
+            if resolved:
+                files.extend(resolved)
             else:
                 print(f"⚠️ No match found for {target}")
-
         return files
+
+    def _resolve_target(self, target: str) -> list[Path] | None:
+        """Resolve a single dotted path into one or more .py files"""
+        path = target.replace(".", "/")
+        candidates = [Path.cwd() / path, Path.cwd() / "apps" / path]
+
+        for base in candidates:
+            py_file = base.with_suffix(".py")
+            folder = base if base.is_dir() else None
+
+            if py_file.exists() and folder:
+                raise ValueError(
+                    f"⚠️ Ambiguous target '{target}': both '{py_file.name}' and '{folder.name}/' exist in {base.parent}"
+                )
+            if folder:
+                return list(folder.rglob("*.py"))
+            if py_file.exists():
+                return [py_file]
+
+        return None
 
     def _organize_file(self, filepath: Path) -> bool:
         """Run autoflake, isort, and black. Return True if file was changed."""
@@ -93,7 +87,7 @@ class DjangoCodeOrganizer:
 
         # 2. Organize imports
         subprocess.run(
-            [sys.executable, "-m", "isort", str(filepath)],
+            [sys.executable, "-m", "isort", "--overwrite-in-place", str(filepath)],
             check=True,
         )
 
@@ -112,7 +106,7 @@ def register_subcommand(subparsers):
         DjangoCodeOrganizer(targets=args.targets, dry_run=args.dry_run).run()
 
     parser = subparsers.add_parser(
-        "organize",
+        "sanitizeimport",
         help="Organize Python code (imports, ordering, formatting).",
     )
     parser.add_argument(
