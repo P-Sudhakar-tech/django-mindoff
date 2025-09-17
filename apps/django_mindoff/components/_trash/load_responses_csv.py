@@ -1,8 +1,9 @@
 import csv
 from pathlib import Path
-from django.conf import settings
-from .if_validator import MindoffValidator
 
+from django.conf import settings
+
+from .if_validator import MindoffValidator
 
 REQUIRED_HEADERS = ["code", "title", "description", "status"]
 ALLOWED_STATUSES = {"ok", "fail"}

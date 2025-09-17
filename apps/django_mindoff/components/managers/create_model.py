@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
-from apps.django_mindoff.components.helper_kit import mo_helper_kit
 
+from apps.django_mindoff.components.helper_kit import mo_helper_kit
 
 # ======== CONSTANTS =======
 # Add Constants here

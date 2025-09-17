@@ -1,24 +1,20 @@
-import uuid
-import os
-import tempfile
-from sqlalchemy import literal
-from django.conf import settings
-from sqlalchemy import create_engine, inspect, Table, MetaData, select, insert
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from urllib.parse import quote_plus
-from typing import Dict, Union, Type, Literal
-import polars as pl
-from django.db import models
 import time
-from django.db import connection
-from typeguard import typechecked
-from sqlalchemy.sql.schema import quoted_name
-from sqlalchemy.sql import text
+import uuid
+from typing import Dict, Type, Union
 from urllib.parse import quote_plus
-from apps.django_mindoff.components.response_kit import mo_validation_kit
+
+import polars as pl
+from django.conf import settings
+from django.db import connection, models
+from sqlalchemy import MetaData, Table, create_engine, inspect, literal, select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.sql.schema import quoted_name
+from typeguard import typechecked
+
 from apps.django_mindoff.components.polars_kit import mo_polars_kit
+from apps.django_mindoff.components.response_kit import mo_validation_kit
 
 
 @typechecked

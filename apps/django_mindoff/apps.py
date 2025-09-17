@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+
 from apps.django_mindoff.components.response_kit import load_responses_csv
 
 

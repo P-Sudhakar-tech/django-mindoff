@@ -10,14 +10,16 @@ TEST CASES:
 
 """
 
-import pytest
-import sys
 import logging
-from apps.django_mindoff.components.validation_kit import (
-    mo_validation_kit,
-    ValidationError,
-)
+import sys
+
+import pytest
 from django_mindoff.components.tdd_kit import MindoffTestCase
+
+from apps.django_mindoff.components.validation_kit import (
+    ValidationError,
+    mo_validation_kit,
+)
 
 
 class TestImmediateValidator(MindoffTestCase):

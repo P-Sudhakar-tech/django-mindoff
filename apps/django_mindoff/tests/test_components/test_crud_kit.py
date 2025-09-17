@@ -16,16 +16,18 @@
 3. Foreign Key Validation Invalid Rows all Rejects
 """
 
-import pytest
+import uuid
+
 import polars as pl
 import polars.testing as pl_testing
-import uuid
+import pytest
 from django.db import models
-from django.db.models import Count, F, Max
+from django.db.models import Count, F
 from typeguard import TypeCheckError
-from apps.django_mindoff.components.tdd_kit import MindoffTestCase
+
 from apps.django_mindoff.components.crud_kit import mo_crud_kit
 from apps.django_mindoff.components.polars_kit import mo_polars_kit
+from apps.django_mindoff.components.tdd_kit import MindoffTestCase
 from apps.django_mindoff.components.validation_kit import ValidationError
 
 shared_uuid_author_book_relation = str(uuid.uuid4().hex)

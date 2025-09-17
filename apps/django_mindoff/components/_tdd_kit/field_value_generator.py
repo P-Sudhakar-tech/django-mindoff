@@ -1,9 +1,10 @@
+import datetime
 import random
 import string
 import uuid
-import datetime
 from decimal import Decimal
-from django.core.validators import MinValueValidator, MaxValueValidator
+
+from django.core.validators import MaxValueValidator, MinValueValidator
 from model_bakery import baker
 
 

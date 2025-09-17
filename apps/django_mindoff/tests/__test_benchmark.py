@@ -1,10 +1,11 @@
-import polars as pl
-import pytest
-import uuid
-import time
-import psutil
 import os
 import random
+import time
+import uuid
+
+import polars as pl
+import psutil
+import pytest
 
 
 def benchmark(func):

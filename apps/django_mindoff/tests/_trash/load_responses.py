@@ -20,18 +20,17 @@ None
 None
 """
 
-import pytest
-import os
-import uuid
 import csv
+import os
 from pathlib import Path
+
 from django.conf import settings
-from apps.django_mindoff.components.response_kit import (
-    load_responses_csv,
-    MINDOFF_RESPONSES,
-)
 from django_mindoff.components.tdd_kit import MindoffTestCase
 
+from apps.django_mindoff.components.response_kit import (
+    MINDOFF_RESPONSES,
+    load_responses_csv,
+)
 
 CSV_HEADERS_VALID = ["code", "title", "description", "status"]
 CSV_DATA_VALID = [

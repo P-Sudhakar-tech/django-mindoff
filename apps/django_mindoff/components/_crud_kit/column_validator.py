@@ -1,5 +1,6 @@
-import polars as pl
 from typing import Dict, Tuple, Type, Union
+
+import polars as pl
 from django.db import models
 
 

@@ -1,8 +1,9 @@
-import pytest
 import copy
-from django.db import models
+
+import pytest
 from django.apps import apps
 from django.conf import settings
+from django.db import models
 from django.db.models import ForeignKey
 from django_mindoff.components.tdd_kit import MindoffTestCase
 

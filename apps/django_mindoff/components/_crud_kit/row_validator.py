@@ -1,15 +1,13 @@
-import polars as pl
-import uuid
-import orjson
 import datetime
-from decimal import Decimal
-from typing import Dict, Union, Type
-from collections.abc import Callable
+import warnings
+from typing import Dict, Type, Union
+
+import orjson
+import polars as pl
 from django.db import models
 from django.utils import timezone
-from ..polars_kit import mo_polars_kit
-import warnings
 
+from ..polars_kit import mo_polars_kit
 
 DJANGO_TO_POLARS_TYPE_MAP = {
     "AutoField": pl.Int64,

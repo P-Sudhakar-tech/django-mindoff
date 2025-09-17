@@ -1,7 +1,7 @@
 import polars as pl
 from django.db import models
 from django.db.models.fields.related import ForeignKey, OneToOneField
-import numpy as np
+
 from ..polars_kit import mo_polars_kit
 from ..validation_kit import mo_validation_kit
 
