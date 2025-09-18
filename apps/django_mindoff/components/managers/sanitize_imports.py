@@ -116,7 +116,7 @@ def register_subcommand(subparsers):
             "Target apps/folders/files using dotted path. Examples:\n"
             "  blog → all files in blog app\n"
             "  blog.models → blog/models.py\n"
-            "  blog.utils → blog/utils.py or blog/utils/ (error if both exist)\n"
+            "  blog.utils → blog/utils.py or blog/utils/\n"
             "  blog.utils.file1 → blog/utils/file1.py\n"
             "If empty, runs for all apps."
         ),
