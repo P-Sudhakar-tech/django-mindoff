@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+
 from apps.django_mindoff.components.helper_kit import mo_helper_kit
 
 TEMPLATE_PATH = Path(__file__).parent / "resources" / "api_class.py"

@@ -1,5 +1,6 @@
-import os
 import inspect
+import os
+
 from django.apps import apps
 
 

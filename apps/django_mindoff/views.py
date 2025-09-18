@@ -1,6 +1,7 @@
 # views.py
 import argparse
 import importlib
+
 from django_mindoff.components import managers
 
 

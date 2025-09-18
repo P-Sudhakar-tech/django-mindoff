@@ -5,11 +5,12 @@ and 4 modes: raise, response, agg_raise, agg_response.
 """
 
 from __future__ import annotations
+
 import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 
 class ValidationError(Exception):
@@ -243,7 +244,7 @@ class MindoffValidator:
 
     # Truthiness
 
-    def ensure_empty(self, value: Any, *, msg: Optional[str] = None):
+    def ensure_falsey(self, value: Any, *, msg: Optional[str] = None):
         ok = not bool(value)
         message = msg or f"Condition failed: expected truthy, got {value!r}"
         return self._record_or_raise(
@@ -254,7 +255,7 @@ class MindoffValidator:
             context={"condition": value},
         )
 
-    def ensure_not_empty(self, value: Any, *, msg: Optional[str] = None):
+    def ensure_truthy(self, value: Any, *, msg: Optional[str] = None):
         ok = bool(value)
         message = msg or f"Condition failed: expected falsy, got {value!r}"
         return self._record_or_raise(

@@ -1,7 +1,9 @@
 import logging
 import traceback
-from typing import List, Dict, Any, Literal
+from typing import Any, Dict, List, Literal
+
 from django.conf import settings
+
 from apps.django_mindoff.components._response_kit.load_responses_csv import (
     MINDOFF_RESPONSES,
 )

@@ -14,22 +14,24 @@ INVALID:
 2. json_response - Error Category Missing / Incorrect
 """
 
-import pytest
 import csv
-import logging
 import io
+import logging
 import uuid
+from copy import deepcopy
 from pathlib import Path
-from django.conf import settings as django_settings
-from apps.django_mindoff.components.helpers.tdd_fixtures import LogicTestCase
-from typeguard import TypeCheckError
-from django.http import HttpResponse, FileResponse
-from apps.django_mindoff.components.response_kit import (
-    mo_response_kit,
-    load_responses_csv,
-    MINDOFF_RESPONSES,
-)
 
+import pytest
+from django.conf import settings as django_settings
+from django.http import FileResponse, HttpResponse
+from typeguard import TypeCheckError
+
+from apps.django_mindoff.components.response_kit import (
+    MINDOFF_RESPONSES,
+    load_responses_csv,
+    mo_response_kit,
+)
+from apps.django_mindoff.components.tdd_kit import MindoffTestCase
 
 default_data = [{"a": 1}, {"b": 2}]
 CSV_HEADERS_VALID = ["code", "title", "description", "status"]
@@ -50,7 +52,14 @@ CSV_DATA_VALID = [
 ]
 
 
-class TestJsonResponse(LogicTestCase):
+class TestJsonResponse(MindoffTestCase):
+    def setup_method(self, method):
+        self._original_responses = deepcopy(MINDOFF_RESPONSES)
+
+    def teardown_method(self, method):
+        MINDOFF_RESPONSES.clear()
+        MINDOFF_RESPONSES.update(self._original_responses)
+
     @pytest.mark.parametrize("is_debug", [True, False])
     @pytest.mark.parametrize(
         "exception",
@@ -184,7 +193,7 @@ class TestJsonResponse(LogicTestCase):
             writer.writerows(data)
 
 
-class TestFileResponse(LogicTestCase):
+class TestFileResponse(MindoffTestCase):
     def test_from_disk_valid(self, tmp_path):
         test_file = tmp_path / "sample.txt"
         test_file.write_text("hello world")
@@ -221,7 +230,7 @@ class TestFileResponse(LogicTestCase):
         assert response["status"] == "fail"
 
 
-class TestHtmlResponse(LogicTestCase):
+class TestHtmlResponse(MindoffTestCase):
     @pytest.mark.parametrize(
         "html, status_code",
         [
@@ -239,7 +248,7 @@ class TestHtmlResponse(LogicTestCase):
         assert response.content == html.encode()
 
 
-class TestTextResponse(LogicTestCase):
+class TestTextResponse(MindoffTestCase):
     @pytest.mark.parametrize(
         "text, status_code",
         [
@@ -256,7 +265,7 @@ class TestTextResponse(LogicTestCase):
         assert response.content == text.encode()
 
 
-class TestExceptionHandler(LogicTestCase):
+class TestExceptionHandler(MindoffTestCase):
     def test_exception_handler_valid(self, rf):
         @mo_response_kit.response_guardian
         def view(request):
@@ -272,9 +281,11 @@ class TestExceptionHandler(LogicTestCase):
 
     @pytest.mark.parametrize("is_debug", [True, False])
     def test_exception_handler_invalid(self, rf, settings, capsys, caplog, is_debug):
+        from apps.django_mindoff.components.validation_kit import mo_validation_kit
+
         @mo_response_kit.response_guardian
         def view(request):
-            raise ValueError("boom")
+            mo_validation_kit.ensure_equal(1, 2, msg="boom", is_exception=True)
 
         settings.DEBUG = is_debug
         request = rf.get("/")

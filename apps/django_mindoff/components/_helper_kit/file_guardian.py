@@ -1,126 +1,12 @@
-import os
 import functools
 import hashlib
+import os
 import shutil
 import tempfile
 from pathlib import Path
 
-# ======== SUB FUNCTIONS =======
-
-
-def _sha256sum(file_path):
-    h = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        while chunk := f.read(8192):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _delete_file_safely(file):
-    try:
-        if os.path.exists(file):
-            os.remove(file)
-            print(f"🗑️ Deleted file: {file}")
-    except Exception as err:
-        print(f"⚠️ Could not delete file {file}: {err}")
-
-
-def _delete_dir_safely(directory):
-    try:
-        if os.path.exists(directory):
-            shutil.rmtree(directory)
-            print(f"🧹 Deleted directory: {directory}")
-    except Exception as err:
-        print(f"⚠️ Could not delete directory {directory}: {err}")
-
-
-def _backup_modified_file(path, modified_files, backup_root):
-    try:
-        rel_path = os.path.relpath(path)
-        backup_path = os.path.join(backup_root, rel_path)
-        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-        shutil.copy2(path, backup_path)
-        modified_files[path] = backup_path
-    except Exception as err:
-        print(f"⚠️ Could not backup file {path}: {err}")
-
-
-def _restore_modified_file(path, backup_path):
-    try:
-        shutil.copy2(backup_path, path)
-        print(f"♻️ Restored modified file: {path}")
-    except Exception as err:
-        print(f"⚠️ Could not restore file {path}: {err}")
-
-
-# ======== WRAPPED FUNC MAKERS =======
-
-
-def _make_wrapped_open(created_files, modified_files, backup_root, original_open):
-    def _wrapped_open(file, mode="r", *a, **k):
-        path = str(file)
-        is_writing = any(m in mode for m in "wax+")
-        if is_writing:
-            if not os.path.exists(path):
-                created_files.add(path)
-            elif path not in modified_files:
-                _backup_modified_file(path, modified_files, backup_root)
-        return original_open(file, mode, *a, **k)
-
-    return _wrapped_open
-
-
-def _make_wrapped_makedirs(created_dirs, original_makedirs):
-    def _wrapped_makedirs(name, exist_ok=False):
-        path = Path(name)
-        if not path.exists():
-            created_dirs.add(str(path))
-        return original_makedirs(name, exist_ok=exist_ok)
-
-    return _wrapped_makedirs
-
-
-def _make_wrapped_write_text(
-    created_files, modified_files, backup_root, original_write_text
-):
-    def _wrapped_write_text(path_obj, data, encoding=None, errors=None):
-        file = str(path_obj)
-        if not os.path.exists(file):
-            created_files.add(file)
-        elif file not in modified_files:
-            _backup_modified_file(file, modified_files, backup_root)
-        return original_write_text(path_obj, data, encoding=encoding, errors=errors)
-
-    return _wrapped_write_text
-
-
-def _make_wrapped_write_bytes(
-    created_files, modified_files, backup_root, original_write_bytes
-):
-    def _wrapped_write_bytes(path_obj, data):
-        file = str(path_obj)
-        if not os.path.exists(file):
-            created_files.add(file)
-        elif file not in modified_files:
-            _backup_modified_file(file, modified_files, backup_root)
-        return original_write_bytes(path_obj, data)
-
-    return _wrapped_write_bytes
-
-
-def _make_wrapped_mkdir(created_dirs, original_mkdir):
-    def _wrapped_mkdir(self, mode=0o777, parents=False, exist_ok=False):
-        path_str = str(self)
-        if not Path(self).exists():
-            created_dirs.add(path_str)
-        return original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
-
-    return _wrapped_mkdir
-
 
 # ======== MAIN FUNCTION =======
-
-
 def file_guardian(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -192,3 +78,111 @@ def file_guardian(func):
                 _delete_dir_safely(backup_root)
 
     return wrapper
+
+
+# ======== SUB FUNCTIONS =======
+def _sha256sum(file_path):
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _delete_file_safely(file):
+    try:
+        if os.path.exists(file):
+            os.remove(file)
+            print(f"🗑️ Deleted file: {file}")
+    except Exception as err:
+        print(f"⚠️ Could not delete file {file}: {err}")
+
+
+def _delete_dir_safely(directory):
+    try:
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
+            print(f"🧹 Deleted directory: {directory}")
+    except Exception as err:
+        print(f"⚠️ Could not delete directory {directory}: {err}")
+
+
+def _backup_modified_file(path, modified_files, backup_root):
+    try:
+        rel_path = os.path.relpath(path)
+        backup_path = os.path.join(backup_root, rel_path)
+        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+        shutil.copy2(path, backup_path)
+        modified_files[path] = backup_path
+    except Exception as err:
+        print(f"⚠️ Could not backup file {path}: {err}")
+
+
+def _restore_modified_file(path, backup_path):
+    try:
+        shutil.copy2(backup_path, path)
+        print(f"♻️ Restored modified file: {path}")
+    except Exception as err:
+        print(f"⚠️ Could not restore file {path}: {err}")
+
+
+def _make_wrapped_open(created_files, modified_files, backup_root, original_open):
+    def _wrapped_open(file, mode="r", *a, **k):
+        path = str(file)
+        is_writing = any(m in mode for m in "wax+")
+        if is_writing:
+            if not os.path.exists(path):
+                created_files.add(path)
+            elif path not in modified_files:
+                _backup_modified_file(path, modified_files, backup_root)
+        return original_open(file, mode, *a, **k)
+
+    return _wrapped_open
+
+
+def _make_wrapped_makedirs(created_dirs, original_makedirs):
+    def _wrapped_makedirs(name, exist_ok=False):
+        path = Path(name)
+        if not path.exists():
+            created_dirs.add(str(path))
+        return original_makedirs(name, exist_ok=exist_ok)
+
+    return _wrapped_makedirs
+
+
+def _make_wrapped_write_text(
+    created_files, modified_files, backup_root, original_write_text
+):
+    def _wrapped_write_text(path_obj, data, encoding=None, errors=None):
+        file = str(path_obj)
+        if not os.path.exists(file):
+            created_files.add(file)
+        elif file not in modified_files:
+            _backup_modified_file(file, modified_files, backup_root)
+        return original_write_text(path_obj, data, encoding=encoding, errors=errors)
+
+    return _wrapped_write_text
+
+
+def _make_wrapped_write_bytes(
+    created_files, modified_files, backup_root, original_write_bytes
+):
+    def _wrapped_write_bytes(path_obj, data):
+        file = str(path_obj)
+        if not os.path.exists(file):
+            created_files.add(file)
+        elif file not in modified_files:
+            _backup_modified_file(file, modified_files, backup_root)
+        return original_write_bytes(path_obj, data)
+
+    return _wrapped_write_bytes
+
+
+def _make_wrapped_mkdir(created_dirs, original_mkdir):
+    def _wrapped_mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        path_str = str(self)
+        if not Path(self).exists():
+            created_dirs.add(path_str)
+        return original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    return _wrapped_mkdir

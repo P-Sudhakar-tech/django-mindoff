@@ -7,26 +7,26 @@ mo_response_kit.json_response(code="ERR", category="danger", data=[])
 mo_response_kit.json_response(code="ERR", category="danger", data=[], exception=e)
 @mo_response_kit.response_guardian
 """
+import csv
 import io
 import logging
-import traceback
-import csv
-import uuid
 import mimetypes
 import textwrap
-import inspect
-from pathlib import Path
-from typing import List, Dict, Any, Literal, Union
-from types import SimpleNamespace
+import traceback
+import uuid
 from functools import wraps
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Dict, List, Literal, Union
+
 from django.conf import settings
-from rest_framework.response import Response
+from django.http import FileResponse, HttpResponse
 from rest_framework import status
-from django.http import HttpResponse
-from django.http import FileResponse
+from rest_framework.response import Response
 from typeguard import typechecked
-from .validation_kit import mo_validation_kit
+
 from .helper_kit import mo_helper_kit
+from .validation_kit import mo_validation_kit
 
 # ----------------------------------
 # Constants
@@ -58,7 +58,7 @@ default_json_response = {
 # 1. Load responses from config/responses.csv into MINDOFF_RESPONSES dict.
 def load_responses_csv(csv_location=None):
     csv_path = csv_location or _get_csv_path()
-    mo_validation_kit.ensure_exists(path=csv_path)
+    mo_validation_kit.ensure_exists(path=csv_path, is_exception=True)
     with open(csv_path, newline="", encoding="utf-8") as csvfile:
         sample = csvfile.read(1024)
         csvfile.seek(0)
@@ -70,9 +70,10 @@ def load_responses_csv(csv_location=None):
         reader = csv.DictReader(csvfile, dialect=dialect, quotechar='"')
         actual_headers = [h.strip().lower() for h in (reader.fieldnames or [])]
         missing = [h for h in REQUIRED_HEADERS if h not in actual_headers]
-        mo_validation_kit.ensure_empty(
+        mo_validation_kit.ensure_falsey(
             value=missing,
             msg=f"Missing required headers: {missing}. Perhaps a typo? Or too many additional columns?",
+            is_exception=True,
         )
         header_map = {h.lower(): h for h in reader.fieldnames}
         responses = {}
@@ -84,11 +85,14 @@ def load_responses_csv(csv_location=None):
                 for h in REQUIRED_HEADERS
             }
             code = str(row_data["code"]).strip().upper()
-            mo_validation_kit.ensure_not_empty(
-                value=code, msg=f"Empty 'code' at line {line_num}"
+            mo_validation_kit.ensure_truthy(
+                value=code, msg=f"Empty 'code' at line {line_num}", is_exception=True
             )
             mo_validation_kit.ensure_not_in(
-                code, seen_codes, msg=f"Duplicate code '{code}' at line {line_num}"
+                code,
+                seen_codes,
+                msg=f"Duplicate code '{code}' at line {line_num}",
+                is_exception=True,
             )
             seen_codes.add(code)
             row_data["code"] = code
@@ -100,10 +104,11 @@ def load_responses_csv(csv_location=None):
                     f"Invalid status '{row_data['status']}' at line {line_num}. "
                     f"Allowed values: {sorted(ALLOWED_STATUSES)}"
                 ),
+                is_exception=True,
             )
             for k, v in row_data.items():
-                mo_validation_kit.ensure_not_empty(
-                    value=v, msg=f"Empty '{k}' at line {line_num}"
+                mo_validation_kit.ensure_truthy(
+                    value=v, msg=f"Empty '{k}' at line {line_num}", is_exception=True
                 )
             responses[code] = {
                 "title": row_data["title"],

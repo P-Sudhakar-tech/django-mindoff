@@ -1,14 +1,17 @@
 import os
+
 from django.core.management.base import CommandError
 
 # ======== CONSTANTS =======
 EXCLUDED_DIR = ["__pycache__"]
+
 
 # ======== CLASSES =======
 # C1. Recursively adds an __init__.py file to every folder under `path`,
 class InitSanitizer:
     def __init__(self, path: str = "src"):
         self.path = path
+
     def run(self) -> None:
         if not isinstance(self.path, str) or not self.path.strip():
             raise CommandError("Provided path must be a non-empty string.")
@@ -31,7 +34,11 @@ class InitSanitizer:
 def register_subcommand(subparsers):
     def _sanitize_init(args):
         InitSanitizer(args.path).run()
-    parser = subparsers.add_parser("sanitizeinit", help="Add __init__.py to all folders recursively under the given path")
+
+    parser = subparsers.add_parser(
+        "sanitizeinit",
+        help="Add __init__.py to all folders recursively under the given path",
+    )
     parser.add_argument("path", help="Target root path to initialize packages")
     parser.set_defaults(handler=_sanitize_init)
 

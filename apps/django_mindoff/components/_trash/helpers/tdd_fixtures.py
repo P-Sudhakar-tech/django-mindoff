@@ -4,29 +4,27 @@
 #     - Third-Party
 #     - Local Modules
 # ==========================================================
+import shutil
+import sys
+import tempfile
+import uuid
+from collections import namedtuple
+from pathlib import Path
+from typing import List, Tuple, Type
+
+import polars as pl
+import pytest
+from django.apps import apps
+from django.conf import settings
+from django.db import connection, models
+from django.test import SimpleTestCase, override_settings
+from django_mindoff.components.helper_kit import mo_helper_kit
+from model_bakery import baker
+from typeguard import typechecked
 
 # ==========================================================
 # 2. CONSTANTS
 # ==========================================================
-
-
-import pytest
-import uuid
-import sys
-import tempfile
-import shutil
-import pytest
-from pathlib import Path
-from typing import List, Tuple
-from collections import namedtuple
-from django.apps import apps, AppConfig
-from django.db import models, connection
-from django.test import SimpleTestCase, override_settings
-from django.conf import settings
-from django_mindoff.components.helpers.string_conversion import pascal_to_snake
-from django_mindoff.components.helpers.django_info import get_current_app_name
-
-# ==== 2. Constants ====
 PASCAL_CASE_REGEX = r"^[A-Z][a-zA-Z0-9]+$"
 SNAKE_CASE_REGEX = r"^[a-z0-9_]+$"
 test_case = SimpleTestCase()
@@ -38,25 +36,27 @@ test_case = SimpleTestCase()
 #     3.2 Butler Functions -- _butler_function_name
 #     3.3 Helper Functions -- __helper_function_name
 # ==========================================================
-class LogicTestCase:
+class MindoffTestCase:
     @pytest.fixture(autouse=True)
     def run(self, request):
         self.asserts = request.getfixturevalue("_asserts")
-        self.init_temp_app = request.getfixturevalue("_init_temp_app")
-        self.init_temp_model = request.getfixturevalue("_init_temp_model")
+        self.mo_mock_app = request.getfixturevalue("_mo_mock_app")
+        self.mo_mock_model = request.getfixturevalue("_mo_mock_model")
         self.init_temp_dir = request.getfixturevalue("_init_temp_dir")
+        self.mo_mock_model_dfs = request.getfixturevalue("_mo_mock_model_dfs")
 
     @pytest.fixture(scope="session")
     def _asserts(self):
         return SimpleTestCase()
 
     @pytest.fixture
-    def _init_temp_app(self, request):
+    def _mo_mock_app(self, request):
         """Temporary Django App Creation Fixure."""
         CreatedApp = namedtuple("CreatedApp", ["app_name", "temp_dir", "override"])
         created_apps = []
 
-        def __setup(app_name: str = None):
+        @typechecked
+        def __setup(app_name: str | None = None):
             app_name = _validate_or_generate_app_name(created_apps, app_name)
             app_name = app_name.lower().replace(" ", "_")
             temp_dir = Path(tempfile.mkdtemp())
@@ -95,30 +95,33 @@ class LogicTestCase:
         return __setup
 
     @pytest.fixture
-    def _init_temp_model(self, request):
+    def _mo_mock_model(self, request):
         """Temporary Django Model Creation Fixure."""
         # ---- Setup ----
         created_models = []
 
+        @typechecked
         def __setup(
-            model_name: str = None,
+            model_name: str | None = None,
             *,
-            app_name: str = None,
-            table_name: str = None,
+            app_name: str | None = None,
+            table_name: str | None = None,
             foreign_keys: List[Tuple[str, str]] = [],
             fields: dict = {},
             base_model=models.Model,
         ):
-            _validate_inittempmodel_parameters(model_name, table_name, foreign_keys)
+            _validate_mockmodel_parameters(model_name, table_name, foreign_keys)
             if app_name:
                 app_name = _validate_or_generate_app_name(
                     app_name=app_name, is_exists=True
                 )
             else:
-                app_name = get_current_app_name()
+                app_name = mo_helper_kit.get_current_app_name()
             model_name = _validate_or_generate_model_name(created_models, model_name)
             if not table_name:
-                table_name = pascal_to_snake(model_name.lower().removesuffix("model"))
+                table_name = mo_helper_kit.pascal_to_snake(
+                    model_name.lower().removesuffix("model")
+                )
             model_class = _create_model(
                 app_name, model_name, table_name, foreign_keys, fields, base_model
             )
@@ -165,6 +168,45 @@ class LogicTestCase:
 
         request.addfinalizer(__teardown)
         return __setup
+
+    @pytest.fixture
+    def _mo_mock_model_dfs(self, request):
+        @typechecked
+        def __bake_model_df_dict(
+            models: List[Type],
+            *,
+            counts: List[int] = [],
+            exclude_columns: List[List[str]] = [],
+            modify: List[dict] = [],
+            is_fk_as_id: bool = False,
+            is_enforce_db_column: bool = True,
+        ) -> dict[Type, pl.DataFrame]:
+            counts = counts or [1] * len(models)
+            exclude_columns = exclude_columns or []
+            modify = modify or []
+            df_dict = {}
+            baked_objects_per_model = []
+            for idx, model in enumerate(models):
+                objs = _generate_model_factory_objects(
+                    idx, model, models, baked_objects_per_model, counts
+                )
+                baked_objects_per_model.append(objs)
+                df = pl.DataFrame(
+                    [_obj_to_dict(obj, is_fk_as_id=is_fk_as_id) for obj in objs]
+                )
+                if is_enforce_db_column:
+                    field_map = {
+                        f.name: (f.db_column or f.get_attname_column()[1])
+                        for f in model._meta.concrete_fields
+                        if hasattr(f, "attname")
+                    }
+                    df = df.rename({col: field_map.get(col, col) for col in df.columns})
+                df = _apply_exclude_columns(idx, df, exclude_columns)
+                df = _apply_modify(idx, df, modify)
+                df_dict[model] = df
+            return df_dict
+
+        return __bake_model_df_dict
 
 
 # ==========================================================
@@ -223,7 +265,7 @@ def _create_model(
 
 
 def _validate_or_generate_app_name(
-    created_apps: list = [], app_name: str = None, is_exists: bool = False
+    created_apps: list = [], app_name: str | None = None, is_exists: bool = False
 ):
     existing_apps = set(apps.app_configs.keys()) | set(created_apps)
     if not app_name:
@@ -240,7 +282,9 @@ def _validate_or_generate_app_name(
     return app_name
 
 
-def _validate_or_generate_model_name(created_models: list = [], model_name: str = None):
+def _validate_or_generate_model_name(
+    created_models: list = [], model_name: str | None = None
+):
     existing_model_names = {m.__name__ for m in created_models}
     if not model_name:
         base_name = "TestModel"
@@ -255,7 +299,7 @@ def _validate_or_generate_model_name(created_models: list = [], model_name: str 
     return model_name
 
 
-def _validate_inittempmodel_parameters(model_name, table_name, foreign_keys):
+def _validate_mockmodel_parameters(model_name, table_name, foreign_keys):
     if model_name:
         test_case.assertRegex(model_name, PASCAL_CASE_REGEX, msg="Invalid Model Name")
         test_case.assertTrue(
@@ -274,7 +318,7 @@ def _validate_model(model_class):
     test_case.assertTrue(model_class._meta.db_table)
 
     # Check model fields exist and have proper types
-    fields = {f.name: f for f in model_class._meta.get_fields()}
+    fields = {f.name: f for f in model_class._meta.concrete_fields}
     test_case.assertIn("id", fields)
     for field in fields.values():
         if field.is_relation and field.many_to_one:
@@ -285,6 +329,96 @@ def _validate_model(model_class):
         list(qs)
     except Exception as e:
         test_case.fail(f"Querying model failed: {e}")
+
+
+def _obj_to_dict(obj, is_fk_as_id=True):
+    """Convert a Django model instance to dict, optionally replacing FK fields with PKs."""
+    result = {}
+    for field in obj._meta.fields:
+        val = getattr(obj, field.name)
+        if is_fk_as_id and hasattr(field, "related_model") and val is not None:
+            val = val.pk
+        result[field.name] = val
+    return result
+
+
+def _generate_model_factory_objects(
+    idx, model, models, baked_objects_per_model, counts
+):
+    n_per_parent = counts[idx]
+
+    # Map FK fields to previously baked models
+    fk_fields_map = {
+        f.name: baked_objects_per_model[i]
+        for i, m in enumerate(models[:idx])
+        for f in model._meta.fields
+        if getattr(f, "related_model", None) is m
+    }
+
+    objs = []
+
+    if not fk_fields_map:  # top-level
+        baked = baker.prepare(model, _quantity=n_per_parent)
+        return baked if isinstance(baked, list) else [baked]
+
+    immediate_parent_name, immediate_parent_objs = list(fk_fields_map.items())[-1]
+
+    # replicate per immediate parent
+    for parent_obj in immediate_parent_objs:
+        fk_kwargs = {immediate_parent_name: parent_obj}
+
+        # assign other FKs from parent_obj if available
+        for fk_name, fk_list in fk_fields_map.items():
+            if fk_name == immediate_parent_name:
+                continue
+            if hasattr(parent_obj, fk_name):
+                fk_kwargs[fk_name] = getattr(parent_obj, fk_name)
+            else:
+                # fallback: pick first object from list
+                fk_kwargs[fk_name] = fk_list[0]
+
+        objs.extend(baker.prepare(model, _quantity=n_per_parent, **fk_kwargs))
+
+    return objs
+
+
+def _apply_exclude_columns(idx, df, exclude_columns: List[List[str]]):
+    cols = exclude_columns[idx] if idx < len(exclude_columns) else []
+    if cols:
+        missing = [c for c in cols if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"Cannot exclude non-existing columns {missing} "
+                f"at index {idx}. Available columns: {list(df.columns)}"
+            )
+        return df.drop(cols)
+
+    return df
+
+
+def _apply_modify(idx, df, modify: List[dict]):
+    changes = modify[idx] if idx < len(modify) else {}
+    for row_idx, updates in changes.items():
+        if not (0 <= row_idx < df.height):
+            raise IndexError(
+                f"Row index {row_idx} out of range for DataFrame with {df.height} rows "
+                f"(modify idx={idx})."
+            )
+        for col, val in updates.items():
+            if col not in df.columns:
+                raise ValueError(
+                    f"Cannot modify non-existing column '{col}' at index {idx}. "
+                    f"Available columns: {list(df.columns)}"
+                )
+            df = df.with_columns(
+                [
+                    pl.when(pl.arange(0, df.height) == row_idx)
+                    .then(pl.lit(val))
+                    .otherwise(pl.col(col))
+                    .alias(col)
+                ]
+            )
+    return df
 
 
 # ==========================================================
