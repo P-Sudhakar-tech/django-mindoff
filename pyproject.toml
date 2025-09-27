@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-mindoff"
+version = "0.2.0"
+description = "A developer-focused Django automation kit with CLI tools."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+authors = [
+  { name = "Your Name", email = "your@email.com" }
+]
+
+classifiers = [
+  "Framework :: Django",
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+  "Django>=4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/django-mindoff"
+
+[project.scripts]
+django-mindoff = "django_mindoff.views:main"
+
+[tool.setuptools.packages.find]
+include = ["django_mindoff", "django_mindoff.*"]
+
+[tool.setuptools]
+include-package-data = true

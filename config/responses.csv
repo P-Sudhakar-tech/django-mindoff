@@ -4,3 +4,5 @@ VALIDATION_ERR,Validation Failed,Submitted data failed validation.,fail
 SUCCESS,Success,Operation completed successfully.,ok
 CREATED,Successfully Created,Information have been saved successfully,ok
 UPDATED,Successfully Updated,Information have been updated successfully,ok
+INVALID_PAYLOAD,Invalid Payload,Given Payload does not match the accepted format,fail
+INVALID_METHOD,Invalid Method,Method Not Allowed.,fail
