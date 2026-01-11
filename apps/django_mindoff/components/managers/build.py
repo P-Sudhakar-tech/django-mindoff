@@ -18,7 +18,7 @@ class DjangoAppPackager:
             f for f in self.REQUIRED_FILES if not (self.project_root / f).exists()
         ]
         if missing:
-            print(f"❌ Missing required file(s): {', '.join(missing)}")
+            print(f"Missing required file(s): {', '.join(missing)}")
             return False
         return True
 
@@ -44,7 +44,7 @@ class DjangoAppPackager:
             src = self.apps_dir / app_name
             dest = self.build_dir / app_name
             shutil.copytree(src, dest)
-            print(f"📦 Copied app: {app_name}")
+            print(f"Copied app: {app_name}")
 
     @mo_helper_kit.file_guardian
     def run(self):
@@ -55,11 +55,11 @@ class DjangoAppPackager:
 
         eligible_apps = self._get_eligible_apps()
         if not eligible_apps:
-            print("⚠️ No eligible apps found.")
+            print("No eligible apps found.")
             return
 
         self._copy_apps(eligible_apps)
-        print(f"✅ Build completed at {self.build_dir}")
+        print(f"Build completed at {self.build_dir}")
 
 
 # ======== FUNCTIONS =======
@@ -68,7 +68,7 @@ def register_subcommand(subparsers):
         try:
             DjangoAppPackager().run()
         except Exception as e:
-            print(f"❌ Error during build: {e}")
+            print(f"Error during build: {e}")
 
     parser = subparsers.add_parser(
         "build",

@@ -11,7 +11,7 @@ class DjangoProjectDeleter:
     def __init__(self, dry_run: bool = False, delete_all: bool = False):
         self.project_root = Path.cwd()
         self.default_exclude = {".git", ".venv", ".gitignore", "README.md", ".env.bak"}
-        self.exclude_files = {"automate.py", "run_env.sh", "run_env.bat"}
+        self.exclude_files = {}  # empty for now, can add files here to exclude
         self.project_artifacts = [
             "config",
             "apps",
@@ -25,6 +25,8 @@ class DjangoProjectDeleter:
             "README.md",
             ".venv",
             ".git",
+            "run_env.sh",
+            "run_env.bat",
         ]
         self.dry_run = dry_run
         self.delete_all = delete_all
@@ -46,18 +48,23 @@ class DjangoProjectDeleter:
             self.to_delete.append(path)
 
     def _print_dry_run(self):
-        print("\n🚫 Dry Run Mode — Planned Deletions:")
+        print("\n[Dry Run Mode] Planned Deletions:")
         for path in self.to_delete:
             print(f"  • {path.relative_to(self.project_root)}")
-        print("\n✅ Dry run complete. No files deleted.")
+        print("\n[Dry Run Mode] Dry run complete. No files deleted.")
 
     def _confirm_deletion(self) -> bool:
-        print("\n⚠️ The following will be deleted:")
+        if not self.to_delete:
+            print("No files to delete.")
+            return False
+        print("The following file(s)/folder(s) will be deleted:")
         for path in self.to_delete:
             print(f"  • {path.relative_to(self.project_root)}")
-        confirm = input(
-            "\nAre you sure you want to proceed? This cannot be undone. (y/n): "
-        ).lower()
+        confirm = (
+            input("\nAre you sure you want to proceed? This cannot be undone. (y/N): ")
+            .strip()
+            .lower()
+        )
         return confirm == "y"
 
     def _perform_deletion(self):
@@ -69,21 +76,38 @@ class DjangoProjectDeleter:
                     path.unlink()
                 self.deleted.append(path)
             except Exception as e:
-                print(f"⚠️ Failed to delete {path}: {e}")
+                print(f"Failed to delete {path}: {e}")
 
     def _report_summary(self):
         if self.deleted:
-            print("\n✅ Deleted:")
+            print("\nDeleted:")
             for p in self.deleted:
                 print(f"  • {p.relative_to(self.project_root)}")
         if self.skipped:
-            print("\n⏭️ Skipped:")
+            print("\nSkipped:")
             for p in self.skipped:
                 print(f"  • {p.relative_to(self.project_root)}")
 
+    def _choose_scope(self) -> bool:
+        print(
+            "You're about to permanently delete the Django-Mindoff project in the current directory. \n"
+            "Select a removal method:"
+        )
+        print("1. Basic -- Remove project files only")
+        print("2. Full -- Remove both project files and workspace")
+
+        choice = input("\nEnter choice of number (default: 1): ").strip() or "1"
+        self.delete_all = choice == "2"
+        if choice == "1":
+            print("\n[Selected removal method: Basic]")
+        else:
+            print("\n[Selected removal method: Full]")
+        return True
+
     @mo_helper_kit.file_guardian
     def run(self):
-        print("\n🗑️ Starting project cleanup...")
+        print("\n# ------- Mindoff > Nuke ------- #")
+        self._choose_scope()
         self._identify_targets()
 
         if self.dry_run:
@@ -91,11 +115,12 @@ class DjangoProjectDeleter:
             return
 
         if not self._confirm_deletion():
-            print("❌ Aborted by user.")
+            print("Nuke process aborted. Exiting...")
             return
 
         self._perform_deletion()
         self._report_summary()
+        print("Nuke process completed successfully.")
 
 
 # ======== FUNCTIONS =======

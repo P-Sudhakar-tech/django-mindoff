@@ -1,5 +1,4 @@
 import pytest
-from .. import views
 from django_mindoff.components.tdd_kit import MindoffTestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model

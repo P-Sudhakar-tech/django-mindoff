@@ -2,6 +2,11 @@ import argparse
 import importlib
 import pkgutil
 from apps.django_mindoff.components import managers
+import sys
+
+if sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 
 def main():

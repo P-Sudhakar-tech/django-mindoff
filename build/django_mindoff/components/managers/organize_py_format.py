@@ -19,7 +19,12 @@ class DjangoCodeOrganizer:
         self._preview_files(files)
 
         confirm = (
-            input("\nProceed with organizing these files? (y/N): ").strip().lower()
+            input(
+                "\n❗Proceed with organizing these files? \n "
+                "Do this only if all development works are completed in the path (y/N): "
+            )
+            .strip()
+            .lower()
         )
         if confirm != "y":
             print("Aborted.")

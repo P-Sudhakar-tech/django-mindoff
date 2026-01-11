@@ -10,11 +10,25 @@ from django.apps import apps
 from django.conf import settings
 
 from ._helper_kit import file_guardian
+import sys
 
 
 # ------------------------
 # String Manipulation Helpers
 # ------------------------
+
+
+def safe_print(msg: str):
+    encoding = sys.stdout.encoding or "utf-8"
+    try:
+        # Try printing as-is
+        print(msg)
+    except UnicodeEncodeError:
+        # Fallback: replace unsupported chars with ASCII equivalents
+        cleaned = msg.encode(encoding, "replace").decode(encoding)
+        print(cleaned)
+
+
 def pascal_to_snake(name: str) -> str:
     """Convert PascalCase to snake_case."""
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
@@ -75,6 +89,7 @@ def get_exact_traceback(skip: int | None = None) -> str:
 
 
 mo_helper_kit = SimpleNamespace(
+    safe_print=safe_print,
     pascal_to_snake=pascal_to_snake,
     get_current_app_name=get_current_app_name,
     get_exact_traceback=get_exact_traceback,

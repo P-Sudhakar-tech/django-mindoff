@@ -9,9 +9,8 @@ from ..helper_kit import mo_helper_kit
 
 # ======== CLASSES =======
 class DjangoProjectCreator:
-    def __init__(self, dry_run: bool = False, apps_dir_name="apps", venv_name=".venv"):
+    def __init__(self, apps_dir_name="apps", venv_name=".venv"):
         self.project_root = Path.cwd()
-        self.dry_run = dry_run
         self.apps_dir_name = apps_dir_name
         self.app_dir_path = self.project_root / apps_dir_name
         self.config_dir = self.project_root / "config"
@@ -23,17 +22,22 @@ class DjangoProjectCreator:
         self.django_admin_cmd = (
             self.project_root / venv_name / "Scripts" / "django-admin"
         )
+        self.optional_packages = []
 
     @mo_helper_kit.file_guardian
     def run(self):
         os.chdir(self.project_root)
-        print("\n📝 Dry Run Mode:" if self.dry_run else "\n⚙️ Running Project Setup")
-        actions = self._plan_actions()
-        if self.dry_run:
-            for act in actions:
-                print(f"  • {act}")
-            print("\n✅ Dry run complete. No files modified.")
+        print("\n# ------- Mindoff > Init ------- #")
+        print("You're about to set up the following in the current directory:")
+        print("  • Django-Mindoff project")
+        print("  • Virtual environment")
+        print("  • Git repository\n")
+        confirm = input("Proceed to initialize project? [y/N]: ").strip().lower()
+        if confirm != "y":
+            print("Aborted project initialization. Exiting...")
             return
+
+        self.optional_packages = self._prompt_optional_dependencies()
         self._create_venv()
         self._install_packages()
         self._initialize_django_project()
@@ -43,31 +47,7 @@ class DjangoProjectCreator:
         self._create_extra_folders()
         self._write_supporting_files()
         self._initialize_git()
-        print("✅ Django project setup complete.")
-
-    def _plan_actions(self):
-        actions = [
-            f"Create virtual environment in {self.venv_name}",
-            "Install: django, djangorestframework, python-decouple, pytest, pytest-django",
-        ]
-        optional = self._prompt_optional_dependencies()
-        if optional:
-            actions.append(f"Install optional packages: {', '.join(optional)}")
-        actions.extend(
-            [
-                "Run django-admin startproject config .",
-                f"Run manage.py startapp {self.apps_dir_name}",
-                "Modify settings.py",
-                "Create .env with secret key",
-                "Update urls.py",
-                "Write templates",
-                "Write pytest.ini",
-                "Write .gitignore",
-                "Initialize Git repository",
-            ]
-        )
-        self.optional_packages = optional
-        return actions
+        print("Django-Mindoff project initialization complete.")
 
     def _prompt_optional_dependencies(self):
         optional = []
@@ -76,42 +56,41 @@ class DjangoProjectCreator:
         return optional
 
     def _create_venv(self):
-        print(f"🔧 Creating virtual environment: {self.venv_name}")
+        print(f"Creating virtual environment in '{self.venv_name}'...")
         if not os.path.exists(self.venv_name):
             subprocess.run(["python", "-m", "venv", self.venv_name], check=True)
         else:
-            print("✅ Virtual environment exists, skipping creation.")
+            print("Virtual environment exists, skipping creation.")
 
     def _install_packages(self):
-        print("📦 Installing base dependencies...")
+        print("Installing required packages...")
+
+        base_packages = [
+            "django",
+            "djangorestframework",
+            "python-decouple",
+            "pytest",
+            "pytest-django",
+            "model-bakery",
+            "Faker",
+            "polars",
+            "pandas",
+            "numpy",
+            "tqdm",
+            "autoflake",
+            "isort",
+            "black",
+            "rarfile",
+            "py7zr",
+            "moviepy",
+            "typeguard",
+        ]
         subprocess.run(
-            [
-                self.pip_cmd,
-                "install",
-                "django",
-                "djangorestframework",
-                "python-decouple",
-                "pytest",
-                "pytest-django",
-                "model-bakery",
-                "Faker",
-                "polars",
-                "pandas",
-                "numpy",
-                "tqdm",
-                "autoflake",
-                "isort",
-                "black",
-                "rarfile",
-                "py7zr",
-                "moviepy",
-            ],
+            [self.pip_cmd, "install", *base_packages],
             check=True,
         )
         if self.optional_packages:
-            print(
-                f"📦 Installing optional packages: {', '.join(self.optional_packages)}"
-            )
+            print(f"Installing optional packages: {', '.join(self.optional_packages)}")
             subprocess.run(
                 [self.pip_cmd, "install", *self.optional_packages], check=True
             )
@@ -120,13 +99,13 @@ class DjangoProjectCreator:
         subprocess.run([self.pip_cmd, "install", "-e", local_package_path], check=True)
 
     def _initialize_django_project(self):
-        print("🚀 Starting Django project...")
+        print("Creating Django project...")
         subprocess.run(
             [self.django_admin_cmd, "startproject", "config", "."], check=True
         )
 
     def _update_settings(self):
-        print("🛠 Updating settings.py...")
+        print("Updating settings.py...")
         content = self.settings_path.read_text()
         lines, secret_key = [], ""
         insert_pos = {}
@@ -161,7 +140,6 @@ class DjangoProjectCreator:
 
         self.settings_path.write_text(updated)
         self.secret_key = secret_key
-        print("✅ settings.py updated.")
 
     def _extract_secret_and_debug_info(self, content, lines, secret_key, insert_pos):
         for idx, line in enumerate(content.splitlines()):
@@ -176,11 +154,11 @@ class DjangoProjectCreator:
         return lines, secret_key, insert_pos
 
     def _create_env_file(self):
-        print("🔐 Writing .env file...")
+        print("Writing .env file...")
         Path(".env").write_text(f"DJANGO_SECRET_KEY={self.secret_key}\nDEBUG=True\n")
 
     def _update_urls(self):
-        print("🌐 Updating urls.py...")
+        print("Updating urls.py...")
         content = self.urls_path.read_text()
         content = re.sub(r'^\s*"""(?:.|\n)*?"""', "", content).lstrip()
         if "from django.urls import" in content and "include" not in content:
@@ -199,9 +177,9 @@ class DjangoProjectCreator:
         self.urls_path.write_text(content)
 
     def _create_extra_folders(self):
-        print("🧩 Creating apps folder")
+        print("Creating apps folder...")
         self.app_dir_path.mkdir(exist_ok=True)
-        print("🧩 Writing template files")
+        print("Writing template files...")
         templates_src = Path(__file__).parent / "resources" / "html"
         templates_dst = self.project_root / "templates"
         templates_dst.mkdir(exist_ok=True)
@@ -209,23 +187,23 @@ class DjangoProjectCreator:
             shutil.copy(html_file, templates_dst / html_file.name)
 
     def _write_supporting_files(self):
-        print("🧩 Writing mindoff.py CLI runner")
+        print("Writing mindoff.py CLI runner...")
         source = Path(__file__).parent / "resources" / "mindoff.py"
         target = self.project_root / "mindoff.py"
         shutil.copy(source, target)
 
-        print("🧩 Writing pytest.ini")
+        print("Writing pytest.ini...")
         source = Path(__file__).parent / "resources" / "pytest.ini"
         target = self.project_root / "pytest.ini"
         shutil.copy(source, target)
 
-        print("🧩 Writing .gitignore")
+        print("Writing .gitignore...")
         source = Path(__file__).parent / "resources" / ".gitignore"
         target = self.project_root / ".gitignore"
         shutil.copy(source, target)
 
     def _initialize_git(self):
-        print("📘 Initializing Git...")
+        print("Setting up Git...")
         Path("README.md").touch()
         subprocess.run(["git", "init"])
         subprocess.run(["git", "add", "."])
@@ -249,12 +227,7 @@ class DjangoProjectCreator:
 # ======== FUNCTIONS =======
 def register_subcommand(subparsers):
     def _create_project(args):
-        DjangoProjectCreator(dry_run=args.dry_run).run()
+        DjangoProjectCreator().run()
 
     parser = subparsers.add_parser("init", help="Initialize a new Django Project.")
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show planned actions without making any changes",
-    )
     parser.set_defaults(handler=_create_project)

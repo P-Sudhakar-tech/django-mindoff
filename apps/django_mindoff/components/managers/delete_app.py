@@ -36,7 +36,7 @@ class DjangoAppDeleter:
     def _confirm_deletion(self) -> bool:
         confirm = (
             input(
-                f"❗ Are you sure you want to delete the app '{self.dotted_path}'? (y/N): "
+                f"Are you sure you want to delete the app '{self.dotted_path}'? (y/N): "
             )
             .strip()
             .lower()
@@ -45,7 +45,7 @@ class DjangoAppDeleter:
 
     def _delete_app_dir(self):
         shutil.rmtree(self.app_dir)
-        print(f"🗑️ Deleted app directory: {self.app_dir}")
+        print(f"Deleted app directory: {self.app_dir}")
 
     def _clean_empty_parent_dirs(self):
         parent_dir = os.path.dirname(self.app_dir)
@@ -71,7 +71,7 @@ class DjangoAppDeleter:
                 f.seek(0)
                 f.write("\n".join(updated))
                 f.truncate()
-                print("🧹 Removed from settings.py")
+                print("Removed from settings.py")
 
     def _remove_from_urls(self):
         with open(self.urls_path, "r+") as f:
@@ -83,23 +83,23 @@ class DjangoAppDeleter:
             f.seek(0)
             f.write("\n".join(updated))
             f.truncate()
-            print("🧹 Removed route from urls.py")
+            print("Removed route from urls.py")
 
     @mo_helper_kit.file_guardian
     def run(self):
         if not os.path.exists(self.app_dir):
-            print(f"⚠️ App directory not found: {self.app_dir}")
+            print(f"App directory not found: {self.app_dir}")
             return
 
         if not self._confirm_deletion():
-            print("❌ Deletion cancelled.")
+            print("Deletion cancelled. Exiting...")
             return
 
         self._delete_app_dir()
         self._clean_empty_parent_dirs()
         self._remove_from_settings()
         self._remove_from_urls()
-        print("✅ App deletion complete:", self.dotted_path)
+        print("App deletion complete:", self.dotted_path)
 
 
 # ======== FUNCTIONS =======

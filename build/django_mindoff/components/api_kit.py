@@ -8,7 +8,7 @@ from .validation_kit import mo_validation_kit
 from typing import Any, Dict
 from ._helper_kit.validate_schema import validate_schema
 import json
-from typing import Any, Dict, List, Union, Optional, Literal
+from typing import Any, Dict, List, Union, Optional, Literal, Callable
 from django.views import View
 
 ALLOWED_METHODS = ["get", "post", "put", "delete"]
@@ -35,19 +35,24 @@ class MindoffAPIMixin(View):
     query_parameter_sample: Dict[str, Any] = {}
     payload_sample: Any = None
 
-    # ------------------------
-    # Main entry point
-    # ------------------------
+    # process_mode can be:
+    # - "direct"
+    # - "polling"
+    # - callable returning one of above
+    process_mode: Union[str, Callable[[Any, Dict[str, Any], Dict[str, Any]], str]] = (
+        "direct"
+    )
+
     @api_guardian
     def dispatch(self, request, *args, **kwargs):
-        # 1. Method check
+        # --- method check ---
         mo_validation_kit.ensure_in(
             self.method.lower(),
             ALLOWED_METHODS,
             msg=f"Method '{self.method}' not allowed",
         )
 
-        # 2. Prepare payload (DRF)
+        # --- payload check ---
         payload = request.data
         raw_body = getattr(request, "body", b"")
         if isinstance(raw_body, (bytes, bytearray)):
@@ -58,27 +63,35 @@ class MindoffAPIMixin(View):
                 msg=f"Payload too large: {size_mb:.2f} MB (limit {MAX_PAYLOAD_MB} MB)",
             )
 
-        # 3. Query parameters validation
+        # --- query param check ---
         if self.query_parameter_sample:
             for k, sample_type in self.query_parameter_sample.items():
                 mo_validation_kit.ensure_in(
-                    k, request.GET, msg=f"Missing query parameter '{k}'"
+                    k, request.GET, msg=f"Missing query param '{k}'"
                 )
-                value = request.GET[k]
-                validate_schema(value, sample_type)
+                validate_schema(request.GET[k], sample_type)
 
-        # 4. Payload validation
+        # --- payload schema ---
         if self.payload_sample:
             validate_schema(payload, self.payload_sample)
-        return self.run(request, *args, **kwargs)
 
-    # ------------------------
-    # Developer must implement
-    # ------------------------
+        # --- decide mode ---
+        mode = self.process_mode
+        if callable(mode):
+            mode = mode(request, request.GET, kwargs)
+
+        return self.run(request, *args, **kwargs)
+        # if mode == "direct":
+        #     return self.run(request, *args, **kwargs)
+        # elif mode == "queue":
+        #     return start_polling_task(self.run, request, *args, **kwargs)
+        # else:
+        #     raise ImproperlyConfigured(
+        #         "process_mode must be 'direct', 'queue', or a callable returning one of them"
+        #     )
+
     def run(self, request, *args, **kwargs):
-        raise NotImplementedError(
-            "You must implement the run() method in your API class"
-        )
+        raise NotImplementedError("You must implement run() in your API class")
 
 
 mo_api_kit = SimpleNamespace(

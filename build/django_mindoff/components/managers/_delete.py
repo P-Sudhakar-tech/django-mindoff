@@ -10,7 +10,7 @@ def _delete_apps_via_subprocess():
     """Handle interactive app deletion and call subprocess."""
     apps_dir = os.path.join(os.getcwd(), "apps")
     if not os.path.exists(apps_dir):
-        print("❌ No 'apps' directory found. Exiting...")
+        print("No 'apps' directory found. Exiting...")
         return
 
     app_names = [
@@ -21,15 +21,15 @@ def _delete_apps_via_subprocess():
     ]
 
     if not app_names:
-        print("❌ No valid apps found in 'apps' directory. Exiting...")
+        print("No valid apps found in 'apps' directory. Exiting...")
         return
 
-    print("\n🔢 Select app(s):")
+    print("\nSelect app(s) to delete:")
     for idx, app in enumerate(app_names, start=1):
         print(f"{idx}. {app}")
 
     raw_choices = (
-        input("\nEnter choice of number(s)/name(s) (space separated): ").strip().split()
+        input("\nEnter choice of number(s) (space separated): ").strip().split()
     )
     chosen_apps = []
     for c in raw_choices:
@@ -38,10 +38,10 @@ def _delete_apps_via_subprocess():
         elif c in app_names:
             chosen_apps.append(c)
         else:
-            print(f"❌ Invalid choice: {c}. Exiting...")
+            print(f"Invalid choice: {c}. Exiting...")
 
     if not chosen_apps:
-        print("❌ No valid apps selected. Exiting...")
+        print("No valid apps selected. Exiting...")
         return
 
     subprocess.run([sys.executable, "mindoff.py", "deleteapp"] + chosen_apps)
@@ -55,12 +55,12 @@ def register_subcommand(subparsers):
         options = {
             "1": ("app", "deleteapp"),
         }
-
-        print("\n🔢 Select what you want to delete:")
+        print("\n# ------- Mindoff > Delete ------- #")
+        print("What would you like to delete ?")
         for num, (label, _) in options.items():
             print(f"{num}. {label}")
 
-        choice = input("\nEnter choice of number/name: ").strip().lower()
+        choice = input("\nEnter choice of number: ").strip().lower()
 
         # Resolve choice inline (no extra sub-function)
         command = None
@@ -72,7 +72,7 @@ def register_subcommand(subparsers):
                 command = match[0]
 
         if not command:
-            print("❌ Invalid choice. Exiting...")
+            print("Invalid choice. Exiting...")
             return
 
         if command == "deleteapp":

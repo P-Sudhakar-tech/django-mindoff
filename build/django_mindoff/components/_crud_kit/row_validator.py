@@ -86,7 +86,7 @@ class RowValidator:
         elif isinstance(field, models.BinaryField):
             raise ValueError(
                 f"[{model.__name__}.{name}] BinaryField is not supported. "
-                f"To store base64, use a TextField. For files, use a centralized file uploader."
+                f"To store base64, use a TextField. For files, use the centralized file uploader."
             )
         if field.choices:
             df = self._apply_choices(model, df, field, dtype)
