@@ -18,6 +18,8 @@ from django.apps import apps
 from django.conf import settings
 from django.db import connection, models
 from django.test import SimpleTestCase, override_settings
+from django.urls import get_resolver
+from django.core.exceptions import ImproperlyConfigured
 from .helper_kit import mo_helper_kit
 from .validation_kit import mo_validation_kit
 from model_bakery import baker
@@ -26,6 +28,8 @@ from typeguard import typechecked
 from ._tdd_kit import field_value_generator
 from django.urls import reverse
 from rest_framework.test import APIClient
+from http import HTTPStatus
+
 
 # ==========================================================
 # 2. CONSTANTS
@@ -53,6 +57,7 @@ class MindoffTestCase:
             "_mo_update_mock_model_dfs"
         )
         self.mo_test_api = request.getfixturevalue("_mo_test_api")
+        self.mo_assert_api_response = request.getfixturevalue("_mo_assert_api_response")
         self.client = APIClient()
         if hasattr(mo_validation_kit, "reset"):
             mo_validation_kit.reset()
@@ -281,24 +286,37 @@ class MindoffTestCase:
     @pytest.fixture
     def _mo_test_api(self, request):
         @typechecked
-        def __call_and_assert_api_client(
+        def __call_api_client_get_response(
             self,
-            api_name: str,
+            api_url_name: str,
             *,
             user=None,
-            method: str,
-            payload: dict | None = None,
             headers: dict | None = None,
-            expected_status_code: int = 200,
-            url_kwargs: dict | None = None,
-            query_params: dict | None = None,
+            custom_method: str | None = None,
+            custom_payload: list | dict | None = None,
+            custom_url_kwargs: dict | None = None,
+            custom_query_params: dict | None = None,
             **extra,
         ):
+            api_cls_attr = _get_api_cls_attributes(api_url_name)
             json_content_type_str = "application/json"
             plain_content_type_str = "text/plain"
             html_content_type_str = "text/html"
 
-            url = reverse(api_name, kwargs=url_kwargs or {})
+            method = custom_method if custom_method else api_cls_attr.allowed_method
+            payload = custom_payload if custom_payload else api_cls_attr.payload_sample
+            query_params = (
+                custom_query_params
+                if custom_query_params
+                else api_cls_attr.query_parameter_sample
+            )
+            url_kwargs = (
+                custom_url_kwargs
+                if custom_url_kwargs
+                else api_cls_attr.url_kwargs_sample
+            )
+
+            url = reverse(api_url_name, kwargs=url_kwargs or {})
 
             if query_params:
                 from urllib.parse import urlencode
@@ -346,9 +364,6 @@ class MindoffTestCase:
                     headers=final_headers,
                     **extra,
                 )
-            assert (
-                response.status_code == expected_status_code
-            ), f"Expected {expected_status_code}, got {response.status_code}: {response.content!r}"
 
             # parse Response
             content_type = response.headers.get("Content-Type", "").lower()
@@ -361,7 +376,135 @@ class MindoffTestCase:
                 return response.content.decode(response.charset or "utf-8")
             return response.content
 
-        return __call_and_assert_api_client
+        return __call_api_client_get_response
+
+    @pytest.fixture
+    def _mo_assert_api_response(self, request):
+        @typechecked
+        def __assert_api_response_by_name(
+            *,
+            api_url_name: str,
+            response,
+            expected_status_code: int = 200,
+        ):
+            api_cls_attr = _get_api_cls_attributes(api_url_name)
+            response_type = getattr(api_cls_attr, "response_type", "json").lower()
+
+            assert response is not None, f"[{api_url_name}] API returned no response"
+            assert response.status_code == expected_status_code, (
+                f"[{api_url_name}] Expected HTTP {expected_status_code}, "
+                f"got {response.status_code}"
+            )
+            content_type = response.headers.get("Content-Type", "").lower()
+            content = response.content or b""
+
+            # ================= 1. JSON =================
+            if response_type == "json":
+                assert (
+                    "application/json" in content_type
+                ), f"[{api_url_name}] Expected JSON response, got Content-Type={content_type}"
+
+                try:
+                    body = response.json()
+                except Exception as e:
+                    raise AssertionError(
+                        f"[{api_url_name}] Response body is not valid JSON"
+                    ) from e
+                assert isinstance(
+                    body, dict
+                ), f"[{api_url_name}] JSON root must be an object"
+                assert (
+                    "status" in body
+                ), f"[{api_url_name}] Missing 'status' in JSON response"
+                assert (
+                    "message" in body
+                ), f"[{api_url_name}] Missing 'message' in JSON response"
+                assert (
+                    "data" in body
+                ), f"[{api_url_name}] Missing 'data' in JSON response"
+                assert (
+                    body["status"] == HTTPStatus.OK
+                ), f"[{api_url_name}] JSON status must be 'ok', got {body['status']}"
+                message = body["message"]
+                assert isinstance(
+                    message, dict
+                ), f"[{api_url_name}] 'message' must be an object"
+                required_message_keys = {
+                    "code",
+                    "title",
+                    "description",
+                    "category",
+                }
+                missing = required_message_keys - message.keys()
+                assert (
+                    not missing
+                ), f"[{api_url_name}] Missing keys in message block: {missing}"
+                assert isinstance(
+                    message["code"], str
+                ), f"[{api_url_name}] message.code must be a string"
+                assert isinstance(
+                    message["title"], str
+                ), f"[{api_url_name}] message.title must be a string"
+                assert isinstance(
+                    message["description"], str
+                ), f"[{api_url_name}] message.description must be a string"
+                assert isinstance(
+                    message["category"], str
+                ), f"[{api_url_name}] message.category must be a string"
+                assert isinstance(
+                    body["data"], list
+                ), f"[{api_url_name}] 'data' must be a list"
+
+            # ================= 2. BINARY / FILE =================
+            elif response_type in {"binary", "file"}:
+                assert content, f"[{api_url_name}] Binary response has no content"
+                assert isinstance(
+                    content, (bytes, bytearray)
+                ), f"[{api_url_name}] Binary response must be bytes"
+                assert (
+                    content_type
+                ), f"[{api_url_name}] Binary response missing Content-Type header"
+
+            # ================= 3. XML =================
+            elif response_type == "xml":
+                assert (
+                    "xml" in content_type
+                ), f"[{api_url_name}] Expected XML response, got Content-Type={content_type}"
+
+                text = content.decode(errors="ignore").strip()
+                assert text.startswith("<") and text.endswith(
+                    ">"
+                ), f"[{api_url_name}] Response does not look like valid XML"
+
+            # ================= 4. HTML =================
+            elif response_type == "html":
+                assert (
+                    "text/html" in content_type
+                ), f"[{api_url_name}] Expected HTML response, got Content-Type={content_type}"
+
+                html = content.decode(errors="ignore").lower()
+                assert (
+                    "<html" in html
+                ), f"[{api_url_name}] HTML response missing <html> tag"
+
+            # ================= 5. PLAIN =================
+            elif response_type == "plain":
+                assert (
+                    "text/plain" in content_type
+                ), f"[{api_url_name}] Expected plain text response, got Content-Type={content_type}"
+
+                text = content.decode(errors="ignore")
+                assert isinstance(
+                    text, str
+                ), f"[{api_url_name}] Plain response must be text"
+
+            # ================= 6. UNKNOWN =================
+            else:
+                raise AssertionError(
+                    f"[{api_url_name}] Unsupported response_type: {response_type}"
+                )
+
+        return __assert_api_response_by_name
 
 
 # ==========================================================
@@ -618,6 +761,26 @@ def _apply_modify(idx, df, modify: List[dict]):
                     f"Attempted value: {val!r}. Original error: {e}"
                 )
     return df
+
+
+def _get_api_cls_attributes(api_url_name: str):
+    resolver = get_resolver()
+
+    for pattern in resolver.url_patterns:
+        if getattr(pattern, "name", None) != api_url_name:
+            continue
+
+        callback = pattern.callback
+
+        # Class-based view (as_view)
+        if hasattr(callback, "view_class"):
+            return callback.view_class
+
+        raise ImproperlyConfigured(
+            f"URL '{api_url_name}' does not resolve to a class-based API view"
+        )
+
+    raise LookupError(f"API URL name not found: {api_url_name}")
 
 
 # ==========================================================

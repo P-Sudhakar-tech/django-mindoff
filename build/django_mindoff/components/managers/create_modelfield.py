@@ -24,31 +24,28 @@ VALID_ON_DELETE = {
 # ======== CLASSES ========
 class DjangoModelFieldCreator:
     """
-    Creates a single field inside an existing Django model.
-    Currently supports: ForeignKey
+    Creates a single ForeignKey field inside an existing Django model.
     """
 
     def __init__(
         self,
         model_path: str,
         field_name: str,
-        field_type: str,
+        field_type: str,  # kept for CLI compatibility, ignored internally
         *,
         to: str | None = None,
         on_delete: str = "CASCADE",
         related_name_prefix: int | None = None,
         disable_related_name: bool = False,
-        # common field flags
         optional: bool = False,
-        allow_blank: bool = False,
+        allow_blank: bool = False,  # accepted but ignored (FKs don't need it)
         unique: bool = False,
         db_index: bool = False,
         default: str | None = None,
-        is_choice_field: bool = False,
+        is_choice_field: bool = False,  # accepted but ignored
     ):
         self.model_path = model_path
         self.field_name = field_name
-        self.field_type = field_type
 
         self.to = to
         self.on_delete = on_delete
@@ -56,11 +53,9 @@ class DjangoModelFieldCreator:
         self.disable_related_name = disable_related_name
 
         self.optional = optional
-        self.allow_blank = allow_blank
         self.unique = unique
         self.db_index = db_index
         self.default = default
-        self.is_choice_field = is_choice_field
 
     # -------------------------
     # Parsing & Validation
@@ -100,9 +95,6 @@ class DjangoModelFieldCreator:
         return pascal if pascal.endswith("Model") else f"{pascal}Model"
 
     def _get_model_block(self, lines: list[str]) -> tuple[int, int]:
-        """
-        Returns (start_index, end_index) of the target model class.
-        """
         class_pattern = f"class {self.model_name}("
         start = None
 
@@ -121,21 +113,18 @@ class DjangoModelFieldCreator:
         return start, len(lines)
 
     def _validate_field_name(self):
-        # Basic naming check
         if not re.match(r"^[a-z][a-z0-9_]*$", self.field_name):
             raise ValueError(f"❌ Invalid field name '{self.field_name}'")
 
-        # Reserved suffix check
         if self.field_name.endswith("_fk") or self.field_name.endswith("_rk"):
             raise ValueError(
-                f"❌ Field name '{self.field_name}' cannot end with '_fk' or '_rk', "
-                "these are reserved for foreign keys and reverse keys."
+                f"❌ Field name '{self.field_name}' cannot end with '_fk' or '_rk'"
             )
 
-        # Scoped duplicate check inside the current model only
         lines = self.model_file.read_text().splitlines()
         start, end = self._get_model_block(lines)
         model_block = "\n".join(lines[start:end])
+
         if re.search(rf"\b{self.field_name}\s*=", model_block):
             raise ValueError(
                 f"❌ Field '{self.field_name}' already exists in {self.model_name}"
@@ -147,6 +136,7 @@ class DjangoModelFieldCreator:
 
         if self.on_delete not in VALID_ON_DELETE:
             raise ValueError(f"❌ Invalid on_delete '{self.on_delete}'")
+
         if self.on_delete == "SET_DEFAULT" and self.default is None:
             raise ValueError(
                 "❌ --default <value> is required when on_delete is SET_DEFAULT"
@@ -171,7 +161,6 @@ class DjangoModelFieldCreator:
         self.parent_app = parent_app
         self.parent_model = parent_model
 
-        # prepare import details if cross-app
         if self.parent_app != self.app_slug:
             self.model_import_path = f"apps.{self.parent_app}"
             self.model_import_alias = f"{self.parent_app}_models"
@@ -191,7 +180,7 @@ class DjangoModelFieldCreator:
         lines = self.model_file.read_text().splitlines()
 
         if import_line in lines:
-            return  # already imported
+            return
 
         insert_at = 0
         for i, line in enumerate(lines):
@@ -201,34 +190,8 @@ class DjangoModelFieldCreator:
         lines.insert(insert_at, import_line)
         self.model_file.write_text("\n".join(lines))
 
-    def _ensure_choice_blueprint(self):
-        if not self.is_choice_field:
-            return
-
-        const_name = self._build_choices_const_name()
-        lines = self.model_file.read_text().splitlines()
-
-        if any(line.startswith(f"{const_name} =") for line in lines):
-            return  # already exists
-
-        insert_at = 0
-        for i, line in enumerate(lines):
-            if line.startswith(("from ", "import ")):
-                insert_at = i + 1
-
-        blueprint = [
-            "",
-            f"{const_name} = (",
-            "    # ('value', 'Label'),",
-            ")",
-            "",
-        ]
-
-        lines[insert_at:insert_at] = blueprint
-        self.model_file.write_text("\n".join(lines))
-
     # -------------------------
-    # Field Builders
+    # Field Builder
     # -------------------------
     def _build_related_name(self) -> str:
         if self.disable_related_name:
@@ -248,6 +211,7 @@ class DjangoModelFieldCreator:
 
     def _build_foreign_key_field(self) -> str:
         related_name = self._build_related_name()
+
         target_model = (
             f"{self.model_import_alias}.{self.parent_model}"
             if self.model_import_alias
@@ -258,8 +222,16 @@ class DjangoModelFieldCreator:
             f"on_delete=models.{self.on_delete}",
             f"related_name='{related_name}'",
             f"db_column='{self.field_name}_fk'",
-            *self._build_common_field_options(),
         ]
+
+        if self.optional:
+            options.append("null=True")
+        if self.unique:
+            options.append("unique=True")
+        if self.db_index:
+            options.append("db_index=True")
+        if self.default is not None:
+            options.append(f"default={self.default}")
 
         options_block = ",\n        ".join(options)
 
@@ -269,27 +241,6 @@ class DjangoModelFieldCreator:
             f"        {options_block}\n"
             f"    )"
         )
-
-    def _build_common_field_options(self) -> list[str]:
-        options = []
-        if self.optional:
-            options.append("null=True")
-        if self.allow_blank:
-            options.append("blank=True")
-        if self.unique:
-            options.append("unique=True")
-        if self.db_index:
-            options.append("db_index=True")
-        if self.default is not None:
-            options.append(f"default={self.default}")
-        if self.is_choice_field:
-            options.append(f"choices={self._build_choices_const_name()}")
-
-        return options
-
-    def _build_choices_const_name(self) -> str:
-        base_model = self.model_name.removesuffix("Model")
-        return f"{base_model.upper()}_{self.field_name.upper()}_CHOICES"
 
     # -------------------------
     # File Writer
@@ -309,11 +260,9 @@ class DjangoModelFieldCreator:
 
         if marker_index is None:
             raise ValueError(
-                f"❌ Field insert marker not found inside {self.model_name}. "
-                "Refusing to modify file."
+                f"❌ Field insert marker not found inside {self.model_name}"
             )
 
-        # ensure spacing
         if marker_index > start and lines[marker_index - 1].strip():
             lines.insert(marker_index, "")
 
@@ -323,8 +272,9 @@ class DjangoModelFieldCreator:
         )
 
         self.model_file.write_text("\n".join(lines))
-
-        print(f"✅ Added field '{self.field_name}' to {self.model_name}")
+        print(
+            f"✅ Added ForeignKey '{self.field_name}' to {self.model_name}. Any additional parameters need to be added in respective models.py"
+        )
 
     # -------------------------
     # Runner
@@ -333,15 +283,10 @@ class DjangoModelFieldCreator:
     def run(self):
         self._parse_model_path()
         self._validate_field_name()
+        self._validate_foreign_key()
+        self._ensure_model_import()
 
-        if self.field_type == "foreign_key":
-            self._validate_foreign_key()
-            self._ensure_model_import()
-            field_code = self._build_foreign_key_field()
-        else:
-            raise ValueError(f"❌ Unsupported field type '{self.field_type}'")
-
-        self._ensure_choice_blueprint()
+        field_code = self._build_foreign_key_field()
         self._append_field_to_model(field_code)
 
 

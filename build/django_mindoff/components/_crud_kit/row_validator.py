@@ -6,6 +6,7 @@ import orjson
 import polars as pl
 from django.db import models
 from django.utils import timezone
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 from ..polars_kit import mo_polars_kit
 
@@ -708,8 +709,7 @@ class RowValidator:
             )
 
         # 4. Min/Max value validation
-        min_value = getattr(field, "min_value", None)
-        max_value = getattr(field, "max_value", None)
+        min_value, max_value = self.__get_min_max_from_validators(field)
         if min_value is not None:
             min_check_col = f"__min_check__{name}"
             df = df.with_columns((pl.col(name) < min_value).alias(min_check_col))
@@ -766,6 +766,18 @@ class RowValidator:
         temp_cols = [c for c in df.columns if c.startswith("__") and c != ERROR_COL]
         df = df.drop(temp_cols)
         return df
+
+    def __get_min_max_from_validators(self, field):
+        min_value = None
+        max_value = None
+        for validator in getattr(field, "validators", []):
+            if isinstance(validator, MinValueValidator):
+                if min_value is None or validator.limit_value > min_value:
+                    min_value = validator.limit_value
+            elif isinstance(validator, MaxValueValidator):
+                if max_value is None or validator.limit_value < max_value:
+                    max_value = validator.limit_value
+        return min_value, max_value
 
     def _append_or_initialize_error(
         self, error_key: str, context: str = "", exception: str = ""

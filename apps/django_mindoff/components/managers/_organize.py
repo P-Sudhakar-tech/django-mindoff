@@ -1,46 +1,85 @@
 import subprocess
 import sys
+from pathlib import Path
+
+apps_folder = Path("apps")
 
 
+# -------------------
+# Main Registration
+# -------------------
 def register_subcommand(subparsers):
-    def _organize_dealer(args):
-        options = {
-            "1": ("Add __init__.py", "organizeinit"),
-            "2": ("Format .py files", "organizepyformat"),
-        }
+    def run(args):
+        print("\n# ------- Mindoff > Organize ------- #")
 
-        print("\n🔢 Select what you want to organize:")
-        for num, (name, _) in options.items():
-            print(f"{num}. {name}")
-
-        choice = input("\nEnter choice number/name: ").strip()
-        if choice not in options and choice not in [v[0] for v in options.values()]:
-            print("❌ Invalid choice. Exiting...")
+        local_apps = _get_local_apps()
+        if not local_apps:
+            print("❌ No valid apps found in 'apps' directory. Exiting...")
             return
 
-        if choice in options:
-            _, command = options[choice]
-        else:
-            command = [c for _, c in options.values() if _ == choice][0]
+        selected_apps = _select_apps(local_apps)
+        paths = [str(apps_folder / app) for app in selected_apps]
 
-        # -------------------
-        # GET PATHS FROM USER
-        # -------------------
-        if command in ("organizepyformat", "organizeinit"):
-            prompt_text = (
-                "Enter file or directory path(s) (space separated, eg. apps/app_one apps/app_two).\n"
-                "Path(s): "
-            )
-            paths = input(prompt_text).strip()
-            if not paths:
-                print("❌ No path(s) provided. Exiting...")
-                return
-            remaining_args = paths.split()
+        _run_organize_steps(paths)
 
-        # -------------------
-        # RUN SUBCOMMAND
-        # -------------------
-        subprocess.run([sys.executable, "mindoff.py", command] + remaining_args)
+    parser = subparsers.add_parser(
+        "organize",
+        help="Run all organize steps (init + pyformat)",
+    )
+    parser.set_defaults(handler=run)
 
-    parser = subparsers.add_parser("organize", help="Guided interactive organizer")
-    parser.set_defaults(handler=_organize_dealer)
+
+# -------------------
+# Helper Functions
+# -------------------
+def _get_local_apps():
+    return [
+        d.name
+        for d in apps_folder.iterdir()
+        if d.is_dir()
+        and (apps_folder / d.name / "__init__.py").exists()
+        and (
+            (apps_folder / d.name / "apps.py").exists()
+            or (apps_folder / d.name / "models.py").exists()
+        )
+    ]
+
+
+def _select_apps(local_apps):
+    while True:
+        print("\n🔢 Select app(s) to organize:")
+        for i, app in enumerate(local_apps, 1):
+            print(f"{i}. {app}")
+
+        choice = input(
+            "Enter choice of 'number' (space-separated, leave blank for ALL): "
+        ).strip()
+
+        if not choice:
+            return local_apps
+
+        indexes = [
+            int(i)
+            for i in choice.split()
+            if i.isdigit() and 1 <= int(i) <= len(local_apps)
+        ]
+
+        if not indexes:
+            print("❌ Invalid selection. Please try again.")
+            continue
+
+        return [local_apps[i - 1] for i in indexes]
+
+
+def _run_organize_steps(paths):
+    commands = [
+        "organizeinit",
+        "organizepyformat",
+    ]
+
+    for command in commands:
+        print(f"\n⚙️  Running {command}...")
+        subprocess.run(
+            [sys.executable, "mindoff.py", command, *paths],
+            check=True,
+        )

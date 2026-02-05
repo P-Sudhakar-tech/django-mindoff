@@ -14,17 +14,20 @@ def register_subcommand(subparsers):
         options = {
             "1": ("app", "createapp"),
             "2": ("model", "createmodel"),
-            "3": ("model-field", "create_model_field"),
+            "3": ("foreign-key", "create_model_field"),
             "4": ("api", "createapi"),
         }
-        print("\n# ------- Mindoff > Create ------- #")
-        print("🔢 What would you like to create ?")
-        for num, (name, _) in options.items():
-            print(f"{num}. {name}")
-        choice = input("Enter choice of number: ").strip()
-        if choice not in options and choice not in [v[0] for v in options.values()]:
-            print("Invalid choice. Exiting...")
-            return
+        while True:
+            print("\n# ------- Mindoff > Create ------- #")
+            print("🔢 What would you like to create ?")
+            for num, (name, _) in options.items():
+                print(f"{num}. {name}")
+
+            choice = input("Enter choice of number: ").strip()
+
+            if choice in options or choice in [v[0] for v in options.values()]:
+                break
+            print("❌ Invalid choice. Please try again.")
 
         command = (
             options.get(choice, (None, None))[1]
@@ -70,15 +73,17 @@ def _create_model_flow(local_apps):
         print("No valid apps found in 'apps' directory. Exiting...")
         return []
 
-    app_name = _choose_from_list("Select an app:", local_apps)
-    if not app_name:
-        print("Invalid app selection. Exiting...")
-        return []
+    while True:
+        app_name = _choose_from_list("Select an app:", local_apps)
+        if app_name:
+            break
+        print("❌ Invalid app selection. Please try again.")
 
-    model_name = input("\n⌨️  Model name (PascalCase, e.g. ProductItem): ").strip()
-    if not re.match(r"^[A-Z][a-zA-Z0-9]*$", model_name):
-        print("Invalid model name. Must be PascalCase (e.g. ProductItem). Exiting...")
-        return []
+    while True:
+        model_name = input("\n⌨️  Model name (PascalCase, e.g. ProductItem): ").strip()
+        if re.match(r"^[A-Z][a-zA-Z0-9]*$", model_name):
+            break
+        print("❌ Invalid model name. Must be PascalCase (e.g. ProductItem).")
 
     return [f"{app_name}/{model_name}"]
 
@@ -93,36 +98,27 @@ def _create_model_field_flow(local_apps):
     if not model:
         return []
 
-    # 2. Choose Field Type
-    field_types = ["foreign_key"]
-    field_type = _choose_from_list("Select field type:", field_types)
-    if not field_type:
-        print("Invalid field type. Exiting...")
-        return []
+    # 2. Enter Field Name
+    while True:
+        field_name = input("\n⌨️  Field name (snake_case, e.g. to_account): ").strip()
+        if re.match(r"^[a-z][a-z0-9_]*$", field_name):
+            break
+        print("❌ Invalid field name. Must be snake_case.")
+    args = [model, field_name, "foreign_key"]
 
-    # 3. Enter Field Name
-    field_name = input("\n⌨️  Field name (snake_case, e.g. to_account): ").strip()
-    if not re.match(r"^[a-z][a-z0-9_]*$", field_name):
-        print("Invalid field name. Must be snake_case. Exiting...")
-        return []
-    args = [model, field_name, field_type]
-
-    # 4. Proceed with Field Creation
-    if field_type == "foreign_key":
-        args = __create_foreign_key_field_flow(args, models)
+    # 3. Proceed with Field Creation
+    args = __create_foreign_key_field_flow(args, models)
 
     return args
 
 
 def __create_foreign_key_field_flow(args, models):
     # 1. Choose Parent
-    parent = _choose_from_list(
-        "Select Parent Model:",
-        models,
-    )
-    if not parent:
-        print("Invalid parent model. Exiting...")
-        return []
+    while True:
+        parent = _choose_from_list("Select Parent Model:", models)
+        if parent:
+            break
+        print("❌ Invalid parent model. Please try again.")
     args += ["--to", parent]
 
     # 2. Choose on_delete behavior
@@ -140,26 +136,6 @@ def __create_foreign_key_field_flow(args, models):
     )
     if on_delete:
         args += ["--on_delete", on_delete]
-
-    # 3. Enter Default
-    if on_delete == "SET_DEFAULT":
-        _enter_default(args, required=True)
-    else:
-        _enter_default(args, required=False)
-
-    # 4. Choose Additional Constraints
-    args.extend(
-        _choose_common_field_constraints(
-            [
-                "optional",
-                "allow_blank",
-                "unique",
-                "db_index",
-                "disable_related_name",
-            ]
-        )
-    )
-
     return args
 
 
@@ -171,22 +147,26 @@ def _create_api_flow(local_apps):
         print("No valid apps found in 'apps' directory. Exiting...")
         return []
 
-    app_name = _choose_from_list("Select an app:", local_apps)
-    if not app_name:
-        print("Invalid app selection. Exiting...")
-        return []
+    while True:
+        app_name = _choose_from_list("Select an app:", local_apps)
+        if app_name:
+            break
+        print("❌ Invalid app selection. Please try again.")
 
-    api_name = input("Enter API name (snake_case, e.g. user_profile): ").strip()
-    if not re.match(r"^[a-z][a-z0-9_]*$", api_name):
-        print("Invalid API name. Must be snake_case (e.g. user_profile). Exiting...")
-        return []
+    while True:
+        api_name = input("Enter API name (snake_case, e.g. user_profile): ").strip()
+        if re.match(r"^[a-z][a-z0-9_]*$", api_name):
+            break
+        print("❌ Invalid API name. Must be snake_case.")
 
     args = [f"{app_name}/{api_name}"]
 
     urls = input(
-        "Enter URL(s) for this API, separated by spaces (e.g., user_profile user/<int:id>/detail).\n"
+        "Enter URL(s) for this API, separated by spaces "
+        "(e.g., user_profile user/<int:id>/detail).\n"
         "Leave blank to auto create url: "
     ).strip()
+
     if urls:
         args += ["--url"] + urls.split()
 
@@ -235,64 +215,8 @@ def _choose_a_existing_model(local_apps):
     if not models:
         print("No existing models found. Exiting...")
         return None
-    model = _choose_from_list("Select a Model:", models)
-    if not model:
-        print("Invalid model selection. Exiting...")
-        return None
-    return models, model
-
-
-def _choose_common_field_constraints(allowed_keys):
-    common_field_options = (
-        ("optional", "Optional Field"),
-        ("unique", "Unique Field"),
-        ("is_choice_field", "Choice Field"),
-        ("allow_blank", "Allow Empty Value"),
-        ("db_index", "Create Database Index"),
-        ("disable_related_name", "Disable Foreign Key Relation"),
-    )
-    args: list[str] = []
-    filtered_options = [
-        (key, label) for key, label in common_field_options if key in allowed_keys
-    ]
-
-    options = [
-        (str(i + 1), key, label) for i, (key, label) in enumerate(filtered_options)
-    ]
-
-    if not options:
-        return args
-
-    print("\n🔢 Select Field constraints and additional behaviors (OPTIONAL):")
-    for number, _, label in options:
-        print(f"{number}. {label}")
-    choice = input("Enter choice of number(s) (space seperated): ").strip()
-    if not choice:
-        return args
-
-    selected = set(choice.split())
-
-    for number, key, _ in options:
-        if number in selected:
-            args.append(f"--{key}")
-
-    return args
-
-
-def _enter_default(args, required=False):
-    prompt = (
-        "\n⌨️  Default value (required): "
-        if required
-        else "\n⌨️  Default value (optional, Leave blank to skip): "
-    )
-
     while True:
-        default_input = input(prompt).strip()
-        if not default_input:
-            if required:
-                print("❌ Default value is required. Please enter a value.")
-                continue
-            return args
-
-        args += ["--default", default_input]
-        return args
+        model = _choose_from_list("Select a Model:", models)
+        if model:
+            return models, model
+        print("❌ Invalid model selection. Please try again.")

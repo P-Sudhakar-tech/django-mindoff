@@ -62,9 +62,11 @@ class DjangoApiCreator:
             raise ValueError("API path must be in format <app_name>/<api_name>")
         self.normalized_app_name = self._normalize_app_name(self.original_app_name)
         self.app = self.normalized_app_name
-        self.api_function_name, self.api_class_name = self._normalize_api_name(
-            self.raw_api
-        )
+        words = self.raw_api.split("_")
+        self.api_function_name = self.raw_api
+        pascal = "".join(w.capitalize() for w in words)
+        self.api_class_name = f"{pascal}APIView"
+        self.api_human_name = " ".join(w.capitalize() for w in words)
 
     def _copy_template_and_replace(self):
         app_dir = Path("apps") / self.original_app_name
@@ -76,22 +78,29 @@ class DjangoApiCreator:
         replaced = re.sub(r"class\s+\w+\s*\(", f"class {self.api_class_name}(", content)
         if not replaced or f"class {self.api_class_name}(" not in replaced:
             raise ValueError("Could not replace class name in template.")
-
+        replaced = replaced.replace(
+            "{{API_HUMAN_NAME}}",
+            self.api_human_name,
+        )
+        if "{{API_HUMAN_NAME}}" in replaced:
+            raise ValueError("Template is missing API_HUMAN_NAME replacement.")
+        api_url_name = f"{self.original_app_name}__{self.api_function_name}"
+        replaced = replaced.replace(
+            "{{API_URL_NAME}}",
+            api_url_name,
+        )
         import_lines, code_lines = self._extract_imports_and_code(replaced)
 
         if view_path.exists():
             original = view_path.read_text()
-            # ✅ if class already exists → throw error (no duplicates allowed)
             if f"class {self.api_class_name}(" in original:
                 raise FileExistsError(
                     f"API '{self.raw_api}' already exists under app '{self.original_app_name}'"
                 )
-
             existing_lines = set(original.splitlines())
             missing_imports = [
                 line for line in import_lines if line not in existing_lines
             ]
-
             final_lines = original.rstrip().splitlines()
             insert_at = 0
             for i, line in enumerate(final_lines):
@@ -128,28 +137,23 @@ class DjangoApiCreator:
         if not replaced or f"class Test{self.api_class_name}(" not in replaced:
             raise ValueError("Could not replace test class name in template.")
 
-        api_name = f"{self.original_app_name}__{self.api_function_name}"
-        replaced = re.sub(
-            r'api_name\s*=\s*"[^"]+"',
-            f'api_name = "{api_name}"',
-            replaced,
+        api_url_name = f"{self.original_app_name}__{self.api_function_name}"
+        replaced = replaced.replace(
+            "{{API_URL_NAME}}",
+            api_url_name,
         )
-
         import_lines, code_lines = self._extract_imports_and_code(replaced)
 
         if test_path.exists():
             original = test_path.read_text()
-            # ✅ if test class already exists → throw error
             if f"class Test{self.api_class_name}(" in original:
                 raise FileExistsError(
                     f"Test for API '{self.raw_api}' already exists under app '{self.original_app_name}'"
                 )
-
             existing_lines = set(original.splitlines())
             missing_imports = [
                 line for line in import_lines if line not in existing_lines
             ]
-
             final_lines = original.rstrip().splitlines()
             insert_at = 0
             for i, line in enumerate(final_lines):
@@ -158,7 +162,6 @@ class DjangoApiCreator:
                 ):
                     insert_at = i
                     break
-
             new_test_content = (
                 final_lines[:insert_at]
                 + missing_imports

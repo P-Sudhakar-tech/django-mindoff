@@ -39,15 +39,23 @@ class SoftDeleteModel(TimeStampModel, UserTrailModel):
         abstract = True
 
 
-# class MindoffPolling(models.Model):
-#     id = models.UUIDField(
-#         primary_key=True, default=uuid.uuid4, editable=False, db_column="polling_id"
-#     )
-#     cookie_identifier = models.CharField(max_length=255, blank=True)
-#     status = models.CharField(max_length=50, default="pending")
+class MOQueue(models.Model):
+    mo_queue_id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    user_id = models.UUIDField()
+    idempotency_key = models.CharField(max_length=64, unique=True)
 
-#     class Meta:
-#         db_table = "tbl_mindoff_polling"
+    status = models.CharField(max_length=20)
+    api_url = models.TextField()
 
-#     def __str__(self):
-#         return f"{self.task_id} - {self.status}"
+    request = models.JSONField()
+    response = models.JSONField(null=True, blank=True)
+    error = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "tbl_mo_queue"
+        indexes = [
+            models.Index(fields=["user_id", "status"]),
+        ]
