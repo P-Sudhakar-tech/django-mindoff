@@ -54,6 +54,13 @@ class MOQueue(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def get_user(self):
+        if not self.user_id:
+            return None
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.filter(id=self.user_id).first()
+
     class Meta:
         db_table = "tbl_mo_queue"
         indexes = [

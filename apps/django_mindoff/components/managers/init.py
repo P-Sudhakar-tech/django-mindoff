@@ -84,6 +84,10 @@ class DjangoProjectCreator:
             "py7zr",
             "moviepy",
             "typeguard",
+            "dramatiq",
+            "redis",
+            "hiredis",
+            "django-ratelimit",
         ]
         subprocess.run(
             [self.pip_cmd, "install", *base_packages],

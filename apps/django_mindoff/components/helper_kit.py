@@ -11,7 +11,7 @@ from django.conf import settings
 
 from ._helper_kit import file_guardian
 import sys
-
+from django.urls import get_resolver
 
 # ------------------------
 # String Manipulation Helpers
@@ -88,10 +88,24 @@ def get_exact_traceback(skip: int | None = None) -> str:
         return "".join(traceback.format_list(tb_summary))
 
 
+def get_api_class_from_url_name(url_name: str):
+    resolver = get_resolver()
+    for pattern in resolver.url_patterns:
+        if getattr(pattern, "name", None) == url_name:
+            callback = pattern.callback
+            # Class-based view
+            if hasattr(callback, "view_class"):
+                return callback.view_class
+            # Function-based view (unsupported for Mindoff)
+            raise TypeError(f"URL '{url_name}' is not a class-based view")
+    raise LookupError(f"No URL found with name '{url_name}'")
+
+
 mo_helper_kit = SimpleNamespace(
     safe_print=safe_print,
     pascal_to_snake=pascal_to_snake,
     get_current_app_name=get_current_app_name,
     get_exact_traceback=get_exact_traceback,
     file_guardian=file_guardian.file_guardian,
+    get_api_class_from_url_name=get_api_class_from_url_name,
 )

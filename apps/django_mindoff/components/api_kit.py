@@ -11,7 +11,11 @@ from ._helper_kit.validate_schema import validate_schema
 import json
 from typing import Any, Dict, List, Union, Optional, Literal, Callable
 from django.views import View
-from ._api_kit.service import enqueue_process
+from django.urls import reverse
+from ._api_kit.redis import update_progress
+from ._api_kit.queue_process import enqueue_process
+from django_ratelimit.core import is_ratelimited
+
 
 ALLOWED_METHODS = ["get", "post", "put", "delete"]
 
@@ -37,6 +41,7 @@ class MindoffAPIMixin(View):
     api_name: str = ""
     api_description: str = ""
     process_mode: Literal["direct", "queue"] = "direct"
+    allow_duplicate_queue = False
     allowed_method: Literal["get", "post", "put", "delete"] = ""
 
     # 2. Sample input and output for automated testing
@@ -45,6 +50,11 @@ class MindoffAPIMixin(View):
     max_payload_depth: int | None = 20
     payload_validation: Literal["strict", "basic", None] = "strict"
     payload_schema: list | dict | None = None
+
+    # 3. Rate Limiting
+    rate_limit_api: str | None = "10/m"
+    rate_limit_status: str | None = "60/m"
+    rate_limit_sse: int | None = 3
 
     @api_guardian
     def dispatch(self, request, *args, **kwargs):
@@ -65,6 +75,19 @@ class MindoffAPIMixin(View):
             request.method,
             msg=f"Method '{request.method}' not allowed",
         )
+
+        # --- 2. Rate limit check for API ---
+        if self.rate_limit_api:
+            limited = is_ratelimited(
+                request,
+                key="user_or_ip",
+                rate=self.rate_limit_api,
+                increment=True,
+            )
+            mo_validation_kit.ensure_falsey(
+                limited,
+                msg="API Rate limit exceeded. Please try again after sometime.",
+            )
 
         if self.payload_schema and request.method in ("POST", "PUT"):
             payload = request.data
@@ -107,28 +130,51 @@ class MindoffAPIMixin(View):
                     validation_mode=self.payload_validation,
                 )
 
-        # --- 4. Queue Process if applicable ---
-        mo_validation_kit.ensure_in(
-            self.process_mode,
-            ("direct", "queue"),
-            is_exception=True,
-            msg=f"Process_mode must be either 'direct' or 'queue' in {self.api_url_name} API",
-        )
+        # --- 4. Queue execution ---
         if self.process_mode == "queue":
             queue_id = enqueue_process(
                 request=request,
                 api_instance=self,
+                args=args,
+                kwargs=kwargs,
+            )
+
+            status_url = request.build_absolute_uri(
+                reverse("queue-status", args=[queue_id])
+            )
+            sse_url = request.build_absolute_uri(
+                reverse("queue-status-stream", args=[queue_id])
             )
 
             return JsonResponse(
                 {
                     "status": "queue",
                     "queue_id": queue_id,
-                    "ws_url": build_ws_url(queue_id),
+                    "status_url": status_url,
+                    "sse_url": sse_url,
                 },
                 status=202,
             )
-        return super().dispatch(request, *args, **kwargs)
+
+        # --- 5. Direct execution (IMPORTANT) ---
+        return self.run(request, *args, **kwargs)
+
+    def report_progress(
+        self,
+        progress: int,
+        *,
+        step: str | None = None,
+        message: str | None = None,
+    ):
+        if not self.queue_task_uuid:
+            return
+
+        update_progress(
+            self.queue_task_uuid,
+            progress=progress,
+            step=step,
+            message=message,
+        )
 
     def run(self, request, *args, **kwargs):
         raise NotImplementedError("You must implement run() in your API class")
