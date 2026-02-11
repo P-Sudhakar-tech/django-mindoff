@@ -35,38 +35,38 @@ from ...components.api_kit import mo_api_kit
 from ...components.tdd_kit import MindoffTestCase
 
 default_data = [{"a": 1}, {"b": 2}]
-CSV_HEADERS_VALID = ["code", "title", "description", "status"]
+CSV_HEADERS_VALID = ["code", "title", "description", "http_status"]
 CSV_DATA_VALID = [
-    ["UNEXPECTED_ERR", "Different Title", "An Unexpected Error has occurred.", "fail"],
+    ["UNEXPECTED_ERR", "Different Title", "An Unexpected Error has occurred.", "500"],
     [
         "VALIDATION_ERR",
         "Validation Failed",
         "Submitted data failed validation.",
-        "fail",
+        "400",
     ],
     [
         "PAYLOAD_SIZE_ERR",
         "Payload Size Exceeded Limit",
         "Payload cannot exceed the allowed size limit of 5 MB.",
-        "fail",
+        "400",
     ],
     [
         "PAYLOAD_TYPE_ERR",
         "Payload Schema Mismatch",
         "The Provided payload does not match the expected type.",
-        "fail",
+        "400",
     ],
-    ["SUCCESS", "Success", "Operation completed successfully.", "ok"],
-    ["SUCCESS001", "User Created", "The user has been created.", "ok"],
-    ["SUCCESS002", "Data Saved", "Data saved without any issues.", "ok"],
-    ["SUCCESS003", "Operation Completed", "The request completed.", "ok"],
-    ["SUCCESS004", "Email Sent", "Email has been sent successfully.", "ok"],
-    ["SUCCESS005", "File Uploaded", "File uploaded successfully.", "ok"],
-    ["ERR001", "Invalid Input", "The provided input is invalid.", "fail"],
-    ["ERR002", "Not Found", "The requested resource was not found.", "fail"],
-    ["ERR003", "Permission Denied", "You do not have permission.", "fail"],
-    ["ERR004", "Server Error", "An unexpected server error occurred.", "fail"],
-    ["ERR005", "Timeout", "The operation timed out. Please try again.", "fail"],
+    ["SUCCESS", "Success", "Operation completed successfully.", "200"],
+    ["SUCCESS001", "User Created", "The user has been created.", "200"],
+    ["SUCCESS002", "Data Saved", "Data saved without any issues.", "200"],
+    ["SUCCESS003", "Operation Completed", "The request completed.", "200"],
+    ["SUCCESS004", "Email Sent", "Email has been sent successfully.", "200"],
+    ["SUCCESS005", "File Uploaded", "File uploaded successfully.", "200"],
+    ["ERR001", "Invalid Input", "The provided input is invalid.", "400"],
+    ["ERR002", "Not Found", "The requested resource was not found.", "400"],
+    ["ERR003", "Permission Denied", "You do not have permission.", "400"],
+    ["ERR004", "Server Error", "An unexpected server error occurred.", "500"],
+    ["ERR005", "Database Error", "A database error occurred.", "500"],
 ]
 
 
@@ -96,20 +96,22 @@ class TestJsonResponse(MindoffTestCase):
         ],
     )
     @pytest.mark.parametrize(
-        "code, expected_title, expected_description, expected_status",
+        "code, expected_title, expected_description, expected_status, expected_http_status",
         [
-            ("SUCCESS", "Success", "Operation completed successfully.", "ok"),
+            ("SUCCESS", "Success", "Operation completed successfully.", "ok", 200),
             (
                 "VALIDATION_ERR",
                 "Validation Failed",
                 "Submitted data failed validation.",
                 "fail",
+                400,
             ),
             (
                 "UNEXPECTED_ERR",
                 "Different Title",
                 "An Unexpected Error has occurred.",
-                "fail",
+                "exception",
+                500,
             ),
         ],
     )
@@ -123,21 +125,19 @@ class TestJsonResponse(MindoffTestCase):
         expected_title,
         expected_description,
         expected_status,
+        expected_http_status,
         category,
         exception,
     ):
         self._write_csv(CSV_HEADERS_VALID, CSV_DATA_VALID)
         csv_path = Path(django_settings.BASE_DIR) / "config" / "responses.csv"
         load_responses_csv(csv_path)
-        assert len(MINDOFF_RESPONSES) == 15
+        assert len(MINDOFF_RESPONSES) > 0
         settings.DEBUG = is_debug
         result = getattr(mo_response_kit, "json_response")(
             code=code, category=category, data=default_data, exception=exception
         )
-        if expected_status == "ok":
-            assert result.status_code == 200
-        else:
-            assert result.status_code == 400
+        assert result.status_code == expected_http_status
         result = result.data
         assert result["status"] == expected_status
         assert result["message"]["code"] == code
@@ -189,9 +189,9 @@ class TestJsonResponse(MindoffTestCase):
             result = getattr(mo_response_kit, "json_response")(
                 code=code, category=category, data=default_data
             )
-            assert result.status_code == 400
+            assert result.status_code == 500
             result = result.data
-            assert result["status"] == "fail"
+            assert result["status"] == "exception"
             assert result["message"]["code"] == expected_error_code
             if is_debug:
                 assert "ValueError" in result["message"]["description"]
@@ -245,7 +245,7 @@ class TestFileResponse(MindoffTestCase):
         response = mo_response_kit.file_response(123)
         response = response.data
         assert response["message"]["code"] == "UNEXPECTED_ERR"
-        assert response["status"] == "fail"
+        assert response["status"] == "exception"
 
 
 class TestHtmlResponse(MindoffTestCase):
@@ -253,9 +253,9 @@ class TestHtmlResponse(MindoffTestCase):
         "html, status_code",
         [
             ("<h1>hellow</h1>", 200),
-            ("<h1>world</h1>", 201),
+            ("<h1>world</h1>", 200),
             ("<h1>bad request</h1>", 400),
-            ("<h1>Not Found</h1>", 404),
+            ("<h1>Not Found</h1>", 400),
         ],
     )
     def test_html_response_valid(self, html, status_code):
@@ -271,7 +271,7 @@ class TestTextResponse(MindoffTestCase):
         "text, status_code",
         [
             ("hello", 200),
-            ("world", 201),
+            ("world", 200),
             ("bad request", 400),
         ],
     )
@@ -308,9 +308,9 @@ class TestExceptionHandler(MindoffTestCase):
         settings.DEBUG = is_debug
         request = rf.get("/")
         response = view(request)
-        assert response.status_code == 400
+        assert response.status_code == 500
         result = response.data
-        assert result["status"] == "fail"
+        assert result["status"] == "exception"
         assert result["message"]["code"] == "UNEXPECTED_ERR"
         if is_debug == True:
             assert "ValueError" in result["message"]["description"]

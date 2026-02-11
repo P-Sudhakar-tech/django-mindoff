@@ -13,7 +13,7 @@ class DjangoCodeOrganizer:
         files = self._resolve_files()
 
         if not files:
-            print("No Python files found to organize.")
+            print("[ERROR] No Python files found to organize.")
             return
 
         self._preview_files(files)
@@ -27,7 +27,7 @@ class DjangoCodeOrganizer:
             .lower()
         )
         if confirm != "y":
-            print("Aborted.")
+            print("[ERROR] Aborted.")
             return
 
         for f in tqdm(files, desc="Organizing files", unit="file"):
@@ -48,14 +48,14 @@ class DjangoCodeOrganizer:
             elif path.is_file() and path.suffix == ".py":
                 files.append(path)
             else:
-                print(f"⚠️ No valid Python file or folder found at {target}")
+                print(f"[ERROR] No valid Python file or folder found at {target}")
         return files
 
     def _preview_files(self, files: list[Path]):
         """Show files to be altered with progressive display if >10."""
         n = len(files)
         preview_count = 10
-        print(f"\n{n} Python files will be organized:")
+        print(f"\n[ACTION] {n} Python files will be organized:")
 
         for f in files[:preview_count]:
             print(f" - {f}")

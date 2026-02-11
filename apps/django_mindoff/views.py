@@ -17,7 +17,7 @@ from .components.helper_kit import get_api_class_from_url_name
 from .components._api_kit.redis import sse_event, acquire_sse_slot, release_sse_slot
 
 
-class QueueStatusView(View):
+class MindoffQueuePollingView(View):
     def get(self, request, queue_task_uuid):
 
         # 1. Load task from SQL (ownership + existence)
@@ -25,11 +25,11 @@ class QueueStatusView(View):
 
         # 2. Rate Limit API
         api = get_api_class_from_url_name(obj.api_url)()
-        if api.rate_limit_status:
+        if api.queue_status_polling_limit:
             limited = is_ratelimited(
                 request,
                 key="user_or_ip",
-                rate=api.rate_limit_status,
+                rate=api.queue_status_polling_limit,
                 increment=True,
             )
             mo_validation_kit.ensure_falsey(
@@ -69,7 +69,7 @@ class QueueStatusView(View):
         )
 
 
-class QueueStatusStreamView(View):
+class MindoffQueueStreamingView(View):
     def get(self, request, queue_task_uuid):
         obj = get_object_or_404(MOQueue, queue_task_uuid=queue_task_uuid)
 
@@ -99,7 +99,7 @@ class QueueStatusStreamView(View):
 
     def _acquire_sse_limit(self, obj):
         api = get_api_class_from_url_name(obj.api_url)()
-        max_streams = api.rate_limit_sse
+        max_streams = api.queue_status_streaming_limit
 
         if max_streams is None:
             return

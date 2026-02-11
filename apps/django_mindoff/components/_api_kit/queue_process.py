@@ -10,13 +10,23 @@ from django.urls import resolve
 from django.test.client import RequestFactory
 from ..helper_kit import get_api_class_from_url_name
 from ...models import MOQueue
-import dramatiq
 import traceback
 
 from django.apps import apps
 from django.utils.module_loading import import_string
 from ...models import MOQueue
 from .redis import init_queue, mark_running, mark_completed, mark_failed
+from dramatiq.brokers.redis import RedisBroker
+from dramatiq.middleware import Retries
+from django.conf import settings
+
+redis_broker = RedisBroker(
+    url=settings.REDIS_URL,
+    middleware=[
+        Retries(max_retries=0),
+    ],
+)
+dramatiq.set_broker(redis_broker)
 
 _COMPRESSED_RESPONSE_FLAG = "__compressed__"
 
@@ -82,7 +92,6 @@ def enqueue_process(*, request, api_instance, args, kwargs):
             default=str,
         )
         idempotency_key = hashlib.sha256(raw.encode()).hexdigest()
-
         existing = (
             MOQueue.objects.filter(idempotency_key=idempotency_key)
             .exclude(status__in=("failed", "completed"))
@@ -117,17 +126,13 @@ def enqueue_process(*, request, api_instance, args, kwargs):
     return str(queue_task_uuid)
 
 
-@dramatiq.actor(
-    acks_late=True,
-    max_retries=0,
-)
-def execute_queue(self, queue_task_uuid: str):
+@dramatiq.actor(max_retries=0)
+def execute_queue(queue_task_uuid: str):
     # 1. Load queue task (SQL is source of truth)
     try:
         obj = MOQueue.objects.get(queue_task_uuid=queue_task_uuid)
     except MOQueue.DoesNotExist:
         return  # Task vanished or was purged
-
     snapshot = obj.request_snapshot or {}
 
     # 2. Mark running
@@ -137,7 +142,7 @@ def execute_queue(self, queue_task_uuid: str):
 
     try:
         # 3. Resolve API class
-        api_cls = get_api_class_from_url_name(obj.api_url)
+        api_cls = get_api_class_from_url_name(obj.api_url_name)
         api = api_cls()
 
         # 4. Rehydrate request, args and kwargs

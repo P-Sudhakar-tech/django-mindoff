@@ -33,13 +33,13 @@ class Initorganizer:
                     relative_path = os.path.relpath(init_path, path)
                     with open(init_path, "w", encoding="utf-8") as f:
                         f.write(f"# {os.path.join(path, relative_path)}\n")
-                    print(f"✅ Created: {init_path}")
+                    print(f"[OK] Created: {init_path}")
                     created_files += 1
                 else:
-                    print(f"✔️ Exists:  {init_path}")
+                    print(f"[ACTION] Exists:  {init_path}, skipping...")
 
             if created_files == 0:
-                print("No new __init__.py files needed.")
+                print("[OK] No new __init__.py files needed.")
 
 
 # ======== FUNCTIONS =======

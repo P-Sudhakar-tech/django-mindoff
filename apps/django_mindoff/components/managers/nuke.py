@@ -48,14 +48,14 @@ class DjangoProjectDeleter:
             self.to_delete.append(path)
 
     def _print_dry_run(self):
-        print("\n[Dry Run Mode] Planned Deletions:")
+        print("\n[ACTION] [Dry Run Mode] Planned Deletions:")
         for path in self.to_delete:
             print(f"  • {path.relative_to(self.project_root)}")
-        print("\n[Dry Run Mode] Dry run complete. No files deleted.")
+        print("\n[OK] [Dry Run Mode] Dry run complete. No files deleted.")
 
     def _confirm_deletion(self) -> bool:
         if not self.to_delete:
-            print("No files to delete.")
+            print("[ERROR] No files to delete.")
             return False
         print("The following file(s)/folder(s) will be deleted:")
         for path in self.to_delete:
@@ -76,7 +76,7 @@ class DjangoProjectDeleter:
                     path.unlink()
                 self.deleted.append(path)
             except Exception as e:
-                print(f"Failed to delete {path}: {e}")
+                print(f"[ERROR] Failed to delete {path}: {e}")
 
     def _report_summary(self):
         if self.deleted:

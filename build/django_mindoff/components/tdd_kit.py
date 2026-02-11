@@ -303,7 +303,7 @@ class MindoffTestCase:
             plain_content_type_str = "text/plain"
             html_content_type_str = "text/html"
 
-            method = custom_method if custom_method else api_cls_attr.allowed_method
+            method = custom_method if custom_method else api_cls_attr.method
             payload = custom_payload if custom_payload else api_cls_attr.payload_sample
             query_params = (
                 custom_query_params

@@ -709,7 +709,7 @@ class MindoffValidator:
             is_aggregate=is_aggregate,
         )
 
-    def ensure_exists(
+    def ensure_path(
         self,
         path: Any,
         *,
@@ -722,7 +722,7 @@ class MindoffValidator:
         message = msg or f"Path exists (but should not): {p}"
         return self._record_or_raise(
             ok=ok,
-            fn="ensure_exists",
+            fn="ensure_path",
             exc_type=FileNotFoundError,
             message=message,
             context={"path": str(p)},
@@ -730,7 +730,7 @@ class MindoffValidator:
             is_aggregate=is_aggregate,
         )
 
-    def ensure_not_exists(
+    def ensure_not_path(
         self,
         path: Any,
         *,
@@ -743,7 +743,7 @@ class MindoffValidator:
         message = msg or f"Path does not exist: {p}"
         return self._record_or_raise(
             ok=ok,
-            fn="ensure_not_exists",
+            fn="ensure_not_path",
             exc_type=FileExistsError,
             message=message,
             context={"path": str(p)},

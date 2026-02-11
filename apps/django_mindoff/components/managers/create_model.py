@@ -37,13 +37,13 @@ class DjangoModelCreator:
             self.original_app_name, self.raw_model = self.model_path.split("/")
             self.app_slug = self.original_app_name.lower()
         except ValueError:
-            print("❌ Model path must be in format <app_name>/<model_name>")
+            print("[ERROR] Model path must be in format <app_name>/<model_name>")
             return False
         self.normalized_app_name = self._normalize_app_name(self.original_app_name)
         self.app = self.normalized_app_name
         self.final_model_name, changes = self._format_model_name(self.raw_model)
         if changes:
-            print(f"Generated model name: '{self.final_model_name}'")
+            print(f"[OK] Generated model name: '{self.final_model_name}'")
         self.base_name = self.raw_model.lower().replace("model", "")
         return True
 
@@ -59,7 +59,7 @@ class DjangoModelCreator:
 
     def _get_base_model(self):
         self.parent_class = "mindoff_models.TimeStampModel"
-        print(f"✅ Class set to {self.parent_class}")
+        print(f"[OK] Class set to {self.parent_class}")
 
     def _generate_files(self):
         model_path = Path(self.app.replace(".", "/")) / MODEL_FILE_NAME
@@ -107,7 +107,7 @@ class {self.final_model_name}Serializer(serializers.ModelSerializer):
             text = path.read_text()
             if f"class {check_class}(" in text:
                 print(
-                    f"❌ Class '{check_class}' already exists in {path.name}. Skipping."
+                    f"[ACTION] Class '{check_class}' already exists in {path.name}. Skipping."
                 )
                 return
             lines = text.splitlines()
@@ -132,7 +132,7 @@ class {self.final_model_name}Serializer(serializers.ModelSerializer):
             path.parent.mkdir(parents=True, exist_ok=True)
             lines = [base_import] + imports + ["", content]
             path.write_text("\n".join(lines))
-        print(f"✅ Written to {path}")
+        print(f"[OK] Written to {path}")
 
     def _generate_imports(self, kind: str, import_tuples):
         if kind == "models":
@@ -155,7 +155,7 @@ class {self.final_model_name}Serializer(serializers.ModelSerializer):
         project_root = Path.cwd()
         app_dir = project_root / self.app.replace(".", "/")
         if not app_dir.exists():
-            print(f"❌ App directory '{app_dir}' doesn't exist")
+            print(f"[ERROR] App directory '{app_dir}' doesn't exist")
             return
         self._get_base_model()
         self._generate_files()

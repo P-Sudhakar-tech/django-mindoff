@@ -11,7 +11,7 @@ from django.conf import settings
 
 from ._helper_kit import file_guardian
 import sys
-from django.urls import get_resolver
+from django.urls import get_resolver, URLPattern, URLResolver
 
 # ------------------------
 # String Manipulation Helpers
@@ -49,16 +49,18 @@ def get_app_module_path(app_name: str) -> str:
 
 
 def get_current_app_name():
-    """Try to detect the Django app name from the calling file path."""
-    caller_file = inspect.stack()[2].filename
-    caller_file = os.path.abspath(caller_file)
-
-    for app_config in apps.get_app_configs():
-        if os.path.commonpath(
-            [caller_file, os.path.abspath(app_config.path)]
-        ) == os.path.abspath(app_config.path):
-            return app_config.label
-
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back
+        while frame:
+            filename = frame.f_code.co_filename
+            if filename and os.path.isabs(filename):
+                app_config = apps.get_containing_app_config(filename)
+                if app_config:
+                    return app_config.label
+            frame = frame.f_back
+    finally:
+        del frame
     raise ValueError("No app name could be resolved from current file location.")
 
 
@@ -89,16 +91,33 @@ def get_exact_traceback(skip: int | None = None) -> str:
 
 
 def get_api_class_from_url_name(url_name: str):
-    resolver = get_resolver()
-    for pattern in resolver.url_patterns:
-        if getattr(pattern, "name", None) == url_name:
+    stack = list(get_resolver().url_patterns)
+    while stack:
+        pattern = stack.pop()
+        if isinstance(pattern, URLResolver):
+            stack.extend(pattern.url_patterns)
+            continue
+        if isinstance(pattern, URLPattern) and pattern.name == url_name:
             callback = pattern.callback
-            # Class-based view
-            if hasattr(callback, "view_class"):
-                return callback.view_class
-            # Function-based view (unsupported for Mindoff)
+            view_class = getattr(callback, "view_class", None)
+            if view_class:
+                return view_class
             raise TypeError(f"URL '{url_name}' is not a class-based view")
     raise LookupError(f"No URL found with name '{url_name}'")
+
+
+def get_api_class_attributes(api_url_name: str) -> dict:
+    api_cls = get_api_class_from_url_name(api_url_name)
+    attrs = {}
+    for cls in reversed(api_cls.__mro__):
+        for name, value in vars(cls).items():
+            if name.startswith("_"):
+                continue
+            if callable(value):
+                continue
+            attrs[name] = value
+
+    return attrs
 
 
 mo_helper_kit = SimpleNamespace(
@@ -108,4 +127,5 @@ mo_helper_kit = SimpleNamespace(
     get_exact_traceback=get_exact_traceback,
     file_guardian=file_guardian.file_guardian,
     get_api_class_from_url_name=get_api_class_from_url_name,
+    get_api_class_attributes=get_api_class_attributes,
 )

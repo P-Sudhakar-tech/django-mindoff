@@ -1,0 +1,393 @@
+from rest_framework import status
+from rest_framework.response import Response
+from django.http import JsonResponse
+from rest_framework.views import APIView
+from types import SimpleNamespace
+from functools import wraps
+from .response_kit import mo_response_kit
+from .validation_kit import mo_validation_kit
+from typing import Any, Dict
+from ._helper_kit.validate_schema import validate_schema
+import json
+from typing import Any, Dict, List, Union, Optional, Literal, Callable
+from django.urls import reverse
+from ._api_kit.redis import update_progress
+from ._api_kit.queue_process import enqueue_process
+from django_ratelimit.core import is_ratelimited
+from django.urls import get_resolver
+
+
+ALLOWED_METHODS = ["get", "post", "put", "delete"]
+ALLOWED_PROCESS_MODES = ["direct", "queue"]
+ALLOWED_RESPONSE_TYPES = [
+    "json",
+    "plain",
+    "html",
+    "xml",
+    "binary",
+    "others",
+]
+
+
+def api_guardian(func):
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        try:
+            return func(request, *args, **kwargs)
+        except Exception as e:
+            return mo_response_kit.json_response(
+                code="UNEXPECTED_ERR", category="danger", data=[], exception=e
+            )
+
+    return wrapper
+
+
+# [API KIT] SECTION 2. THE API REPRESENTATIVE
+class MindoffAPIMixin(APIView):
+    # 1. API Identity
+    api_url_name: str = ""
+    api_name: str = ""
+    api_description: str = ""
+
+    # 2. Access Rules
+    authentication_classes = None
+    permission_classes = None
+    method: Literal["get", "post", "put", "delete"] = ""
+
+    # 3. Execution Rules
+    process_mode: Literal["direct", "queue"] = "direct"
+    allow_duplicate_queue: bool = False
+
+    # 4. Request Rules
+    payload_schema: list | dict | None = None
+    max_payload_size: int | float | None = 10  # in Megabytes(MB)
+    max_payload_depth: int | None = None
+    payload_validation: Literal["strict", "basic", None] = None
+
+    # 4. Response Rules
+    response_type: Literal["json", "plain", "html", "xml", "binary", "others"] = "json"
+    response_validation: bool = True
+
+    # 5. Usage Limits Per User
+    api_request_limit: str | None = "30/m"
+    queue_status_polling_limit: str | None = "30/m"
+    queue_status_streaming_limit: int | None = 3
+
+    def run(self, request, *args, **kwargs):
+        raise NotImplementedError("You must implement run() in your API class")
+
+    def handle_exception(self, exc):
+        return mo_response_kit.json_response(
+            code="UNEXPECTED_ERR",
+            category="danger",
+            data=[],
+            exception=exc,
+        )
+
+    def dispatch(self, request, *args, **kwargs):
+
+        # --- 1. API Configuration Validation ---
+        self._validate_api_configuration()
+
+        # --- 1. Allowed Method check ---
+        mo_validation_kit.ensure_truthy(
+            self.method,
+            msg=f"A Valid Method must be configured in {self.api_url_name} api",
+            is_exception=True,
+        )
+        mo_validation_kit.ensure_in(
+            self.method.lower(),
+            ALLOWED_METHODS,
+            msg=f"Method {self.method} configured in API is not allowed",
+            is_exception=True,
+        )
+        mo_validation_kit.ensure_equal(
+            self.method.upper(),
+            request.method,
+            msg=f"Method '{request.method}' not allowed",
+        )
+
+        # --- 2. Rate limit check for API ---
+        if self.api_request_limit:
+            limited = is_ratelimited(
+                request,
+                group=self.api_url_name,
+                key="user_or_ip",
+                rate=self.api_request_limit,
+                increment=True,
+            )
+            mo_validation_kit.ensure_falsey(
+                limited,
+                msg="API Rate limit exceeded. Please try again after sometime.",
+            )
+
+        # --- 3. Payload Check ---
+        if request.method in ("POST", "PUT"):
+            payload = request.data if request.data not in (None, "") else {}
+            # --- 3.1. payload size check ---
+            if self.max_payload_size is not None:
+                raw_body = getattr(request, "body", b"")
+                mo_validation_kit.ensure_greater(
+                    self.max_payload_size,
+                    0,
+                    msg=(
+                        f"`max_payload_size` must be configured with a positive integer (> 0) "
+                        f"for the `{self.api_url_name}` API"
+                    ),
+                    is_exception=True,
+                )
+                if isinstance(raw_body, (bytes, bytearray)):
+                    size_mb = len(raw_body) / (1024 * 1024)
+                    mo_validation_kit.ensure_lesser_equal(
+                        float(size_mb),
+                        float(self.max_payload_size),
+                        msg=f"Payload too large: {size_mb:.2f} MB (Limit: {self.max_payload_size} MB)",
+                    )
+
+            # --- 3.2. payload depth check ---
+            if self.max_payload_depth is not None:
+                mo_validation_kit.ensure_greater(
+                    self.max_payload_depth,
+                    0,
+                    msg=(
+                        f"`max_payload_depth` must be configured with a positive integer (> 0) "
+                        f"for the `{self.api_url_name}` API"
+                    ),
+                    is_exception=True,
+                )
+
+            # --- 3.3. payload schema check
+            if self.payload_validation is not None:
+                if self.payload_schema is None:
+                    mo_validation_kit.ensure_falsey(
+                        payload,
+                        msg="This API does not accept a request payload.",
+                    )
+                else:
+                    validate_schema(
+                        payload,
+                        self.payload_schema,
+                        max_nesting_depth=self.max_payload_depth,
+                        validation_mode=self.payload_validation,
+                    )
+
+        # --- 4. Queue execution ---
+        if self.process_mode == "queue":
+            mo_validation_kit.ensure_falsey(
+                bool(request.FILES),
+                msg="Asynchronous API does not support multipart or file uploads.",
+            )
+            queue_id = enqueue_process(
+                request=request,
+                api_instance=self,
+                args=args,
+                kwargs=kwargs,
+            )
+            mo_validation_kit.ensure_truthy(
+                queue_id,
+                msg="Failed to start the process. Please try again.",
+            )
+
+            status_polling_url = request.build_absolute_uri(
+                reverse("mo_queue_status_polling", args=[queue_id])
+            )
+            status_streaming_url = request.build_absolute_uri(
+                reverse("mo_queue_status_streaming", args=[queue_id])
+            )
+            response_data = {
+                "queue_id": queue_id,
+                "status_polling_url": status_polling_url,
+                "status_streaming_url": status_streaming_url,
+            }
+            mo_response_kit.json_response(
+                code="SUCCESS",
+                category="success",
+                data=response_data,
+            )
+
+        # --- 5. Direct execution ---
+        return self.run(request, *args, **kwargs)
+
+    def report_progress(
+        self,
+        progress: int,
+        *,
+        step: str | None = None,
+        message: str | None = None,
+    ):
+        if not self.queue_task_uuid:
+            return
+
+        update_progress(
+            self.queue_task_uuid,
+            progress=progress,
+            step=step,
+            message=message,
+        )
+
+    def _validate_api_configuration(self):
+        cls = self.__class__
+
+        # ---------- REQUIRED ATTRIBUTES ----------
+        required_attrs = [
+            "api_url_name",
+            "api_name",
+            "api_description",
+            "method",
+            "process_mode",
+            "response_type",
+        ]
+
+        for attr in required_attrs:
+            mo_validation_kit.ensure_truthy(
+                hasattr(cls, attr),
+                msg=f"Missing required API attribute `{attr}` in {cls.__name__}",
+                is_exception=True,
+            )
+
+        # ---------- api_url_name ----------
+        mo_validation_kit.ensure_truthy(
+            self.api_url_name,
+            msg="`api_url_name` must not be empty or None",
+            is_exception=True,
+        )
+        mo_validation_kit.ensure_isinstance(
+            self.api_url_name,
+            str,
+            msg="`api_url_name` must be a string",
+            is_exception=True,
+        )
+
+        resolver = get_resolver()
+        matches = [
+            p.name
+            for p in resolver.url_patterns
+            if getattr(p, "name", None) == self.api_url_name
+        ]
+
+        mo_validation_kit.ensure_truthy(
+            matches,
+            msg=f"`api_url_name='{self.api_url_name}' not found in urls.py",
+            is_exception=True,
+        )
+
+        mo_validation_kit.ensure_equal(
+            len(matches),
+            1,
+            msg=f"`api_url_name='{self.api_url_name}' occurs more than once in urls.py",
+            is_exception=True,
+        )
+
+        # ---------- api_name ----------
+        mo_validation_kit.ensure_truthy(
+            self.api_name,
+            msg="`api_name` must not be empty or None",
+            is_exception=True,
+        )
+        mo_validation_kit.ensure_isinstance(
+            self.api_name,
+            str,
+            msg="`api_name` must be a string",
+            is_exception=True,
+        )
+
+        # ---------- api_description ----------
+        if self.api_description is not None:
+            mo_validation_kit.ensure_isinstance(
+                self.api_description,
+                str,
+                msg="`api_description` must be a string",
+                is_exception=True,
+            )
+
+        # ---------- allow_duplicate_queue ----------
+        mo_validation_kit.ensure_isinstance(
+            self.allow_duplicate_queue,
+            bool,
+            msg="`allow_duplicate_queue` must be boolean",
+            is_exception=True,
+        )
+
+        # ---------- payload_schema ----------
+        mo_validation_kit.ensure_in(
+            type(self.payload_schema),
+            (list, dict, type(None)),
+            msg="`payload_schema` must be list | dict | None",
+            is_exception=True,
+        )
+
+        # ---------- payload limits ----------
+        for attr in ("max_payload_size", "max_payload_depth"):
+            value = getattr(self, attr)
+            if value is not None:
+                mo_validation_kit.ensure_isinstance(
+                    value,
+                    (int, float),
+                    msg=f"`{attr}` must be int | float | None",
+                    is_exception=True,
+                )
+
+        # ---------- payload_validation ----------
+        mo_validation_kit.ensure_in(
+            self.payload_validation,
+            ("strict", "basic", None),
+            msg="`payload_validation` must be 'strict', 'basic' or None",
+            is_exception=True,
+        )
+
+        # ---------- response_type ----------
+        mo_validation_kit.ensure_in(
+            self.response_type,
+            ALLOWED_RESPONSE_TYPES,
+            msg=f"`response_type` must be one of {ALLOWED_RESPONSE_TYPES}",
+            is_exception=True,
+        )
+
+        # ---------- response_validation ----------
+        mo_validation_kit.ensure_isinstance(
+            self.response_validation,
+            bool,
+            msg="`response_validation` must be boolean",
+            is_exception=True,
+        )
+
+        # ---------- rate limits ----------
+        for attr in ("api_request_limit", "queue_status_polling_limit"):
+            value = getattr(self, attr)
+            if value is not None:
+                mo_validation_kit.ensure_isinstance(
+                    value,
+                    str,
+                    msg=f"`{attr}` must be str | None",
+                    is_exception=True,
+                )
+
+        # ---------- streaming limit ----------
+        if self.queue_status_streaming_limit is not None:
+            mo_validation_kit.ensure_isinstance(
+                self.queue_status_streaming_limit,
+                int,
+                msg="`queue_status_streaming_limit` must be int | None",
+                is_exception=True,
+            )
+
+        # ---------- method ----------
+        mo_validation_kit.ensure_in(
+            self.method,
+            ALLOWED_METHODS,
+            msg=f"`method` must be one of {ALLOWED_METHODS}",
+            is_exception=True,
+        )
+
+        # ---------- process_mode ----------
+        mo_validation_kit.ensure_in(
+            self.process_mode,
+            ALLOWED_PROCESS_MODES,
+            msg=f"`process_mode` must be one of {ALLOWED_PROCESS_MODES}",
+            is_exception=True,
+        )
+
+
+mo_api_kit = SimpleNamespace(
+    MindoffAPIMixin=MindoffAPIMixin,
+)

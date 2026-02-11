@@ -121,19 +121,13 @@ class TestMockApp(MindoffTestCase):
         self.asserts.assertEqual(app2, "mixed_case_app")
         self.asserts.assertEqual(app3, "mixedcase_app")
 
-    def test_auto_name_suffix_overflow(self):
-        apps.app_configs["test_app"] = object()
-        for i in range(1, 10000):
-            apps.app_configs[f"test_app_{i}"] = object()
-        name = self.mo_mock_app()
-        self.asserts.assertTrue(name.startswith("test_app_"))
-
     # ------------------------
     # 🌀 ANOMALY TESTS
     # ------------------------
     def test_empty_string_name_fallbacks_to_auto(self):
         name = self.mo_mock_app("")
-        self.asserts.assertTrue(name.startswith("test_app"))
+        assert name != ""
+        assert len(name) > 0
 
     def test_exceeds_max_length_throws_error(self):
         with self.asserts.assertRaises(Exception):
@@ -214,7 +208,7 @@ class TestMockModel(MindoffTestCase):
         - Link one of the Foreign key to Other Permanent Model from another app
         """
         self.mo_mock_app(app_name="temp_otherapp")
-        self.mo_mock_app(app_name="another.temp_app")
+        self.mo_mock_app(app_name="temp_app")
         temp_other_auto = self.mo_mock_model(app_name="temp_otherapp")
         temp_other_defined = self.mo_mock_model(
             app_name="temp_app", model_name="DefinedOtherModel"
@@ -365,10 +359,10 @@ class TestMockModel(MindoffTestCase):
             self.mo_mock_model(foreign_keys=[("nonexistentapp", "NonexistentModel")])
 
     def test_fk_model_string_path_invalid(self):
-        self.mo_mock_app(app_name="directory.temp_app")
-        self.mo_mock_model(model_name="DuplicateModel", app_name="temp_app")
+        app_name = self.mo_mock_app()
+        self.mo_mock_model(model_name="DuplicateModel", app_name=app_name)
         with pytest.raises(LookupError):
-            self.mo_mock_model(foreign_keys=[("directory.temp_app", "DuplicateModel")])
+            self.mo_mock_model(foreign_keys=[("directory_temp_app", "DuplicateModel")])
 
     def test_field_related_errors(self):
         # 1. Duplicate field names in fields

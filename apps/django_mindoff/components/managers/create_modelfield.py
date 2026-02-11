@@ -273,7 +273,7 @@ class DjangoModelFieldCreator:
 
         self.model_file.write_text("\n".join(lines))
         print(
-            f"✅ Added ForeignKey '{self.field_name}' to {self.model_name}. Any additional parameters need to be added in respective models.py"
+            f"[OK] Added ForeignKey '{self.field_name}' to {self.model_name}. Any additional parameters need to be added in respective models.py"
         )
 
     # -------------------------

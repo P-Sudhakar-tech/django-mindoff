@@ -56,7 +56,7 @@ default_json_response = {
 # 1. Load responses from config/responses.csv into MINDOFF_RESPONSES dict.
 def load_responses_csv(csv_location=None):
     csv_path = csv_location or _get_csv_path()
-    mo_validation_kit.ensure_exists(path=csv_path, is_exception=True)
+    mo_validation_kit.ensure_path(path=csv_path, is_exception=True)
     with open(csv_path, newline="", encoding="utf-8") as csvfile:
         sample = csvfile.read(1024)
         csvfile.seek(0)

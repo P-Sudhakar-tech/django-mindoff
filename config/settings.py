@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework.authtoken",
     "apps.django_mindoff",
 ]
 
@@ -128,3 +129,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # MINDOFF SPECIFIC SETTINGS OPTIONS
 MINDOFF_LOG_ERRORS_IN_DEBUG = False
 MINDOFF_TRACEBACK_DIRS = ["apps", "config"]
+REDIS_URL = config("REDIS_URL")

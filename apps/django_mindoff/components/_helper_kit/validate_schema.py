@@ -37,7 +37,7 @@ def validate_schema(
         handler = _get_handler(sch, origin)
         handler(value, sch, origin, args, stack, current_depth, path, validation_mode)
 
-    mo_validation_kit.finalize()
+    mo_validation_kit.finalize(code="INVALID_PAYLOAD")
 
 
 # ------------------------
@@ -96,17 +96,17 @@ def _handle_literal(value, sch, origin, args, stack, depth, path, mode):
 
 
 def _handle_list_shorthand(value, sch, origin, args, stack, depth, path, mode):
+    mo_validation_kit.ensure_type(
+        value, list, msg=f"{path} must be a list", is_aggregate=True
+    )
+    if len(sch) == 0:
+        return
     mo_validation_kit.ensure_equal(
         len(sch),
         MAX_LIST_VARIANTS,
         msg="List schema must have exactly one type",
         is_aggregate=True,
     )
-    # Inlined _check_type
-    mo_validation_kit.ensure_type(
-        value, list, msg=f"{path} must be a list", is_aggregate=True
-    )
-    # Inlined _append_stack
     for i, item in enumerate(value):
         stack.append((item, sch[0], depth + 1, f"{path}[{i}]"))
 
@@ -122,7 +122,7 @@ def _handle_list_typehint(value, sch, origin, args, stack, depth, path, mode):
 
 def _handle_dict_typehint(value, sch, origin, args, stack, depth, path, mode):
     key_type, val_type = args if args else (str, Any)
-    mo_validation_kit.ensure_type(value, dict, path, is_aggregate=True)
+    mo_validation_kit.ensure_type(value, dict, is_aggregate=True)
     for k, v in value.items():
         mo_validation_kit.ensure_type(
             k,
@@ -134,7 +134,7 @@ def _handle_dict_typehint(value, sch, origin, args, stack, depth, path, mode):
 
 
 def _handle_dict_shorthand(value, sch, origin, args, stack, depth, path, mode):
-    mo_validation_kit.ensure_type(value, dict, path, is_aggregate=True)
+    mo_validation_kit.ensure_type(value, dict, is_aggregate=True)
 
     for k, subschema in sch.items():
         if k not in value:
@@ -145,4 +145,4 @@ def _handle_dict_shorthand(value, sch, origin, args, stack, depth, path, mode):
                     is_aggregate=True,
                 )
             continue
-        stack.append((value[k], subschema, depth + 1, f"{path}.{k}", mode))
+        stack.append((value[k], subschema, depth + 1, f"{path}.{k}"))

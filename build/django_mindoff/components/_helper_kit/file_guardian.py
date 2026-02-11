@@ -50,8 +50,8 @@ def file_guardian(func):
             return result
 
         except Exception as e:
-            print(f"\n❌ Error during execution: {e}")
-            print("🛑 Rolling back...")
+            print(f"\n[ERROR] File Guardian detected failure during execution: {e}")
+            print("[ACTION] Rolling back...")
 
             for f in created_files:
                 _delete_file_safely(f)
@@ -62,7 +62,7 @@ def file_guardian(func):
             for d in sorted(created_dirs, key=len, reverse=True):
                 _delete_dir_safely(d)
 
-            print("✅ Rollback complete.")
+            print("[OK] Rollback complete.")
             raise
 
         finally:
@@ -93,9 +93,9 @@ def _delete_file_safely(file):
     try:
         if os.path.exists(file):
             os.remove(file)
-            print(f"🗑️ Deleted file: {file}")
+            print(f"[OK] Deleted file: {file}")
     except Exception as err:
-        print(f"⚠️ Could not delete file {file}: {err}")
+        print(f"[ERROR] Could not delete file {file}: {err}")
 
 
 def _delete_dir_safely(directory):
@@ -103,7 +103,7 @@ def _delete_dir_safely(directory):
         if os.path.exists(directory):
             shutil.rmtree(directory)
     except Exception as err:
-        print(f"⚠️ Could not delete directory {directory}: {err}")
+        print(f"[ERROR] Could not delete directory {directory}: {err}")
 
 
 def _backup_modified_file(path, modified_files, backup_root):
@@ -114,15 +114,15 @@ def _backup_modified_file(path, modified_files, backup_root):
         shutil.copy2(path, backup_path)
         modified_files[path] = backup_path
     except Exception as err:
-        print(f"⚠️ Could not backup file {path}: {err}")
+        print(f"[ERROR] Could not backup file {path}: {err}")
 
 
 def _restore_modified_file(path, backup_path):
     try:
         shutil.copy2(backup_path, path)
-        print(f"♻️ Restored modified file: {path}")
+        print(f"[OK] Restored modified file: {path}")
     except Exception as err:
-        print(f"⚠️ Could not restore file {path}: {err}")
+        print(f"[ERROR] Could not restore file {path}: {err}")
 
 
 def _make_wrapped_open(created_files, modified_files, backup_root, original_open):

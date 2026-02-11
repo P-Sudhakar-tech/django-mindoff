@@ -14,7 +14,7 @@ class MindOffSampleAPI(mo_api_kit.MindoffAPIMixin):
     api_url_name = "{{API_URL_NAME}}"
     api_description = "API Description"
     process_mode = "direct"  # Options: "direct" | "queue"
-    allowed_method = "get"  # Options: "get" | "post" | "put" | "delete"
+    method = "get"  # Options: "get" | "post" | "put" | "delete"
     payload_validation = "strict"  # Options: None | "strict" | "flexible" | "basic"
     max_payload_size = 10  # in Megabytes(MB)
 
