@@ -10,7 +10,7 @@ def _delete_apps_via_subprocess():
     """Handle interactive app deletion and call subprocess."""
     apps_dir = os.path.join(os.getcwd(), "apps")
     if not os.path.exists(apps_dir):
-        print("No 'apps' directory found. Exiting...")
+        print("No 'apps' directory found. Exiting.")
         return
 
     app_names = [
@@ -21,7 +21,7 @@ def _delete_apps_via_subprocess():
     ]
 
     if not app_names:
-        print("No valid apps found in 'apps' directory. Exiting...")
+        print("No valid apps found in 'apps' directory. Exiting.")
         return
 
     while True:

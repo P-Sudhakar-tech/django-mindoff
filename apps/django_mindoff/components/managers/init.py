@@ -34,7 +34,7 @@ class DjangoProjectCreator:
         print("  • Git repository\n")
         confirm = input("Proceed to initialize project? [y/N]: ").strip().lower()
         if confirm != "y":
-            print("[ACTION] Aborted project initialization. Exiting...")
+            print("[ACTION] Aborted project initialization. Exiting.")
             return
 
         self.optional_packages = self._prompt_optional_dependencies()
@@ -56,14 +56,14 @@ class DjangoProjectCreator:
         return optional
 
     def _create_venv(self):
-        print(f"[ACTION] Creating virtual environment in '{self.venv_name}'...")
+        print(f"[ACTION] Creating virtual environment in '{self.venv_name}'.")
         if not os.path.exists(self.venv_name):
             subprocess.run(["python", "-m", "venv", self.venv_name], check=True)
         else:
             print("[ACTION] Virtual environment exists, skipping creation.")
 
     def _install_packages(self):
-        print("[ACTION] Installing required packages...")
+        print("[ACTION] Installing required packages.")
 
         base_packages = [
             "django",
@@ -105,13 +105,13 @@ class DjangoProjectCreator:
         subprocess.run([self.pip_cmd, "install", "-e", local_package_path], check=True)
 
     def _initialize_django_project(self):
-        print("[ACTION] Creating Django project...")
+        print("[ACTION] Creating Django project.")
         subprocess.run(
             [self.django_admin_cmd, "startproject", "config", "."], check=True
         )
 
     def _update_settings(self):
-        print("[ACTION] Updating settings.py...")
+        print("[ACTION] Updating settings.py.")
         content = self.settings_path.read_text()
         lines, secret_key = [], ""
         insert_pos = {}
@@ -163,11 +163,11 @@ class DjangoProjectCreator:
         return lines, secret_key, insert_pos
 
     def _create_env_file(self):
-        print("[ACTION] Writing .env file...")
+        print("[ACTION] Writing .env file.")
         Path(".env").write_text(f"DJANGO_SECRET_KEY={self.secret_key}\nDEBUG=True\n")
 
     def _update_urls(self):
-        print("[ACTION] Updating urls.py...")
+        print("[ACTION] Updating urls.py.")
         content = self.urls_path.read_text()
         content = re.sub(r'^\s*"""(?:.|\n)*?"""', "", content).lstrip()
         if "from django.urls import" in content and "include" not in content:
@@ -186,9 +186,9 @@ class DjangoProjectCreator:
         self.urls_path.write_text(content)
 
     def _create_extra_folders(self):
-        print("[ACTION] Creating apps folder...")
+        print("[ACTION] Creating apps folder.")
         self.app_dir_path.mkdir(exist_ok=True)
-        print("[ACTION] Writing template files...")
+        print("[ACTION] Writing template files.")
         templates_src = Path(__file__).parent / "resources" / "html"
         templates_dst = self.project_root / "templates"
         templates_dst.mkdir(exist_ok=True)
@@ -196,23 +196,23 @@ class DjangoProjectCreator:
             shutil.copy(html_file, templates_dst / html_file.name)
 
     def _write_supporting_files(self):
-        print("[ACTION] Writing mindoff.py CLI runner...")
+        print("[ACTION] Writing mindoff.py CLI runner.")
         source = Path(__file__).parent / "resources" / "mindoff.py"
         target = self.project_root / "mindoff.py"
         shutil.copy(source, target)
 
-        print("[ACTION] Writing pytest.ini...")
+        print("[ACTION] Writing pytest.ini.")
         source = Path(__file__).parent / "resources" / "pytest.ini"
         target = self.project_root / "pytest.ini"
         shutil.copy(source, target)
 
-        print("[ACTION] Writing .gitignore...")
+        print("[ACTION] Writing .gitignore.")
         source = Path(__file__).parent / "resources" / ".gitignore"
         target = self.project_root / ".gitignore"
         shutil.copy(source, target)
 
     def _initialize_git(self):
-        print("[ACTION] Setting up Git...")
+        print("[ACTION] Setting up Git.")
         Path("README.md").touch()
         subprocess.run(["git", "init"])
         subprocess.run(["git", "add", "."])

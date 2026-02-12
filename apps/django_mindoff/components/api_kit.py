@@ -166,15 +166,14 @@ class MindoffAPIMixin(APIView):
             )
         return self.run(request, *args, **kwargs)
 
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        self._validate_api_configuration()
-        self._validate_request_method(request)
-        self._validate_api_rate_limit(request)
-        if request.method in ("POST", "PUT"):
-            self._validate_request_payload(request)
+    def dispatch(self, request, *args, **kwargs):
+        try:
+            return super().dispatch(request, *args, **kwargs)
+        except Exception as exc:
+            response = self.handle_exception(exc)
+            return self._dispatch_ensure_response_is_rendered(response)
 
-    def _validate_api_configuration(self):
+    def validate_api_configuration(self):
 
         # ---------- REQUIRED ATTRIBUTES ----------
         # required_attrs = [
@@ -185,6 +184,22 @@ class MindoffAPIMixin(APIView):
         #     "process_mode",
         #     "response_type",
         # ]
+        for attr_name in ("authentication_classes", "permission_classes"):
+            classes = getattr(self, attr_name)
+            mo_validation_kit.ensure_type(
+                classes,
+                (list, tuple),
+                msg=f"`{attr_name}` in {self.__class__.__name__} must be a list or tuple, not {type(classes).__name__}",
+                is_exception=True,
+                code="API_CONFIG_ERR",
+            )
+            for cls in classes:
+                mo_validation_kit.ensure_truthy(
+                    callable(cls),
+                    msg=f"Invalid entry in `{attr_name}` for {self.__class__.__name__}: '{cls}'. Expected a class, got a string.",
+                    is_exception=True,
+                    code="API_CONFIG_ERR",
+                )
         mo_validation_kit.ensure_truthy(
             self.method,
             msg=f"A Valid Method must be configured in `{self.api_url_name}` api",
@@ -319,6 +334,13 @@ class MindoffAPIMixin(APIView):
                 is_exception=True,
                 code="API_CONFIG_ERR",
             )
+            mo_validation_kit.ensure_greater_equal(
+                self.queue_status_streaming_limit,
+                0,
+                msg="`queue_status_streaming_limit` must be greater than or equal to zero",
+                is_exception=True,
+                code="API_CONFIG_ERR",
+            )
         mo_validation_kit.ensure_in(
             self.process_mode,
             ALLOWED_PROCESS_MODES,
@@ -327,7 +349,23 @@ class MindoffAPIMixin(APIView):
             code="API_CONFIG_ERR",
         )
 
-    def _validate_request_method(self, request):
+    def _dispatch_ensure_response_is_rendered(self, response):
+        if not hasattr(response, "accepted_renderer"):
+            from rest_framework.renderers import JSONRenderer
+
+            response.accepted_renderer = JSONRenderer()
+            response.accepted_media_type = "application/json"
+            response.renderer_context = self.get_renderer_context()
+        return response
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        self._initial_validate_request_method(request)
+        self._initial_validate_api_rate_limit(request)
+        if request.method in ("POST", "PUT"):
+            self._initial_validate_request_payload(request)
+
+    def _initial_validate_request_method(self, request):
         mo_validation_kit.ensure_in(
             self.method.lower(),
             ALLOWED_METHODS,
@@ -342,7 +380,7 @@ class MindoffAPIMixin(APIView):
             code="INVALID_METHOD",
         )
 
-    def _validate_api_rate_limit(self, request):
+    def _initial_validate_api_rate_limit(self, request):
         if self.api_request_limit:
             limited = is_ratelimited(
                 request._request,
@@ -357,7 +395,7 @@ class MindoffAPIMixin(APIView):
                 code="API_RATE_LIMITED",
             )
 
-    def _validate_request_payload(self, request):
+    def _initial_validate_request_payload(self, request):
         payload = request.data if request.data not in (None, "") else {}
         # --- 1. payload size check ---
         if self.max_payload_size is not None:
@@ -412,7 +450,6 @@ class MindoffAPIMixin(APIView):
                 )
 
     def handle_exception(self, exc):
-
         # 1. Authentication related exceptions
         if isinstance(exc, NotAuthenticated):
             return mo_response_kit.json_response(

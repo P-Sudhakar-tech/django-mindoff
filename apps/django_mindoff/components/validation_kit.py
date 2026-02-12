@@ -22,7 +22,7 @@ class MindoffValidationError(Exception):
     def __init__(
         self,
         *,
-        message: str,
+        message: str = "Validation Failed",
         code: str = "VALIDATION_ERR",
         category: str = "danger",
         data: Optional[Dict[str, Any]] = None,

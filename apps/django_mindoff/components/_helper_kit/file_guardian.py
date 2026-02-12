@@ -51,7 +51,7 @@ def file_guardian(func):
 
         except Exception as e:
             print(f"\n[ERROR] Something went wrong during execution: {e}")
-            print("[ACTION] Rolling back...")
+            print("[ACTION] Rolling back.")
 
             for f in created_files:
                 _delete_file_safely(f)

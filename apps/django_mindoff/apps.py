@@ -9,3 +9,4 @@ class DjangoMindoffConfig(AppConfig):
 
     def ready(self):
         load_responses_csv()
+        from . import checks

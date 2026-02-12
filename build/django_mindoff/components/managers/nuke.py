@@ -115,7 +115,7 @@ class DjangoProjectDeleter:
             return
 
         if not self._confirm_deletion():
-            print("Nuke process aborted. Exiting...")
+            print("Nuke process aborted. Exiting.")
             return
 
         self._perform_deletion()

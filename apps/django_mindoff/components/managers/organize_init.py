@@ -36,7 +36,7 @@ class Initorganizer:
                     print(f"[OK] Created: {init_path}")
                     created_files += 1
                 else:
-                    print(f"[ACTION] Exists:  {init_path}, skipping...")
+                    print(f"[ACTION] Exists:  {init_path}, skipping.")
 
             if created_files == 0:
                 print("[OK] No new __init__.py files needed.")

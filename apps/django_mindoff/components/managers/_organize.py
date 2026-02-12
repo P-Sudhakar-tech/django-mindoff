@@ -14,7 +14,7 @@ def register_subcommand(subparsers):
 
         local_apps = _get_local_apps()
         if not local_apps:
-            print("❌ No valid apps found in 'apps' directory. Exiting...")
+            print("❌ No valid apps found in 'apps' directory. Exiting.")
             return
 
         selected_apps = _select_apps(local_apps)
@@ -78,7 +78,7 @@ def _run_organize_steps(paths):
     ]
 
     for command in commands:
-        print(f"\n⚙️  Running {command}...")
+        print(f"\n⚙️  Running {command}.")
         subprocess.run(
             [sys.executable, "mindoff.py", command, *paths],
             check=True,

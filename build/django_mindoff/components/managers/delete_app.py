@@ -92,7 +92,7 @@ class DjangoAppDeleter:
             return
 
         if not self._confirm_deletion():
-            print("Deletion cancelled. Exiting...")
+            print("Deletion cancelled. Exiting.")
             return
 
         self._delete_app_dir()

@@ -70,7 +70,7 @@ def _create_app_flow():
 # -------------------
 def _create_model_flow(local_apps):
     if not local_apps:
-        print("No valid apps found in 'apps' directory. Exiting...")
+        print("No valid apps found in 'apps' directory. Exiting.")
         return []
 
     while True:
@@ -144,7 +144,7 @@ def __create_foreign_key_field_flow(args, models):
 # -------------------
 def _create_api_flow(local_apps):
     if not local_apps:
-        print("No valid apps found in 'apps' directory. Exiting...")
+        print("No valid apps found in 'apps' directory. Exiting.")
         return []
 
     while True:
@@ -213,7 +213,7 @@ def _choose_a_existing_model(local_apps):
                 cls = line.split("class ")[1].split("(")[0]
                 models.append(f"{app}/{cls}")
     if not models:
-        print("No existing models found. Exiting...")
+        print("No existing models found. Exiting.")
         return None
     while True:
         model = _choose_from_list("Select a Model:", models)

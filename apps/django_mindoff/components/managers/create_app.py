@@ -42,13 +42,13 @@ class DjangoAppCreator:
             open(os.path.join(init_dir, "__init__.py"), "a").close()
 
     def _run_startapp(self):
-        print(f"[ACTION] Creating App at: {self.app_dir} ...")
+        print(f"[ACTION] Creating App at: {self.app_dir}.")
         subprocess.run(
             ["python", "manage.py", "startapp", self.app_name, self.app_dir], check=True
         )
 
     def _overwrite_apps_py(self):
-        print("[ACTION] Updating apps.py ...")
+        print("[ACTION] Updating apps.py.")
         apps_path = os.path.join(self.app_dir, "apps.py")
         with open(apps_path, "w") as f:
             f.write(
@@ -59,7 +59,7 @@ class DjangoAppCreator:
             )
 
     def _create_urls_py(self):
-        print("[ACTION] Creating urls.py ...")
+        print("[ACTION] Creating urls.py.")
         urls_path = os.path.join(self.app_dir, "urls.py")
         with open(urls_path, "w") as f:
             f.write(
@@ -71,13 +71,13 @@ class DjangoAppCreator:
             )
 
     def _create_serializers_py(self):
-        print("[ACTION] Creating serializers.py ...")
+        print("[ACTION] Creating serializers.py.")
         serializers_path = os.path.join(self.app_dir, "serializers.py")
         with open(serializers_path, "w") as f:
             f.write("from rest_framework import serializers\nfrom . import models\n")
 
     def _patch_models_py(self):
-        print("[ACTION] Patching models.py ...")
+        print("[ACTION] Patching models.py.")
         path = os.path.join(self.app_dir, "models.py")
         if not os.path.exists(path):
             return
@@ -97,7 +97,7 @@ class DjangoAppCreator:
             f.truncate()
 
     def _setup_tests_folder(self):
-        print("[ACTION] Creating 'tests' folder with __init__.py ...")
+        print("[ACTION] Creating 'tests' folder with __init__.py.")
         tests_py = os.path.join(self.app_dir, "tests.py")
         admin_py = os.path.join(self.app_dir, "admin.py")
         if os.path.exists(tests_py):
@@ -115,7 +115,7 @@ class DjangoAppCreator:
                 return
             installed_apps_str = "INSTALLED_APPS = ["
             if installed_apps_str in content:
-                print("[ACTION] Updating settings.py ...")
+                print("[ACTION] Updating settings.py.")
                 start = content.index(installed_apps_str) + len(installed_apps_str)
                 end = content.index("\n]", start)
                 updated = content[start:end].rstrip() + f"\n    '{self.dotted_path}',"
@@ -130,7 +130,7 @@ class DjangoAppCreator:
             url_prefix = self.original_path.split(".")[-1]
             route = f"path('{url_prefix}/', include('{self.dotted_path}.urls')),"
             if route not in content:
-                print("[ACTION] Linking urls.py ...")
+                print("[ACTION] Linking urls.py.")
                 lines = content.splitlines()
                 for i, line in enumerate(lines):
                     if line.strip() == "]":
@@ -145,7 +145,7 @@ class DjangoAppCreator:
     def run(self):
         if os.path.exists(self.app_dir):
             print(
-                f"[ACTION] App '{self.dotted_path}' already exists at: {self.app_dir}. Skipping..."
+                f"[ACTION] App '{self.dotted_path}' already exists at: {self.app_dir}. Skipping."
             )
             return
         self._create_directories()
