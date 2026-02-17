@@ -47,8 +47,8 @@ class TestCreateCrud(MindoffTestCase):
                     {},
                     {},
                     {
-                        0: {"chapter_id": None},
-                        1: {"chapter_id": None},
+                        0: {"id": None},
+                        1: {"id": None},
                     },
                 ],
                 True,
@@ -79,7 +79,7 @@ class TestCreateCrud(MindoffTestCase):
                 [
                     {},
                     {},
-                    {0: {"author_id": None}},
+                    {0: {"author_ref_id": None}},
                 ],
                 True,
                 "ok",
@@ -90,7 +90,7 @@ class TestCreateCrud(MindoffTestCase):
                 [
                     {},
                     {},
-                    {0: {"author_id": None}},
+                    {0: {"author_ref_id": None}},
                 ],
                 False,
                 "ok",
@@ -143,7 +143,7 @@ class TestCreateCrud(MindoffTestCase):
                 [
                     {},
                     {},
-                    {0: {"book_id": None}},
+                    {0: {"book_ref_id": None}},
                 ],
                 True,
                 "raise",
@@ -154,7 +154,7 @@ class TestCreateCrud(MindoffTestCase):
                 [
                     {},
                     {},
-                    {0: {"book_id": None}},
+                    {0: {"book_ref_id": None}},
                 ],
                 False,
                 "raise",
@@ -165,7 +165,7 @@ class TestCreateCrud(MindoffTestCase):
                 [
                     {},
                     {},
-                    {0: {"book_id": None}, 1: {"author_id": None}},
+                    {0: {"book_ref_id": None}, 1: {"author_ref_id": None}},
                 ],
                 False,
                 "raise",
@@ -173,7 +173,7 @@ class TestCreateCrud(MindoffTestCase):
             (
                 "fk_invalid_partial_rejects",
                 [],
-                [{0: {"author_id": str(uuid.uuid4())}}],
+                [{0: {"id": str(uuid.uuid4())}}],
                 True,
                 "raise",
             ),
@@ -181,10 +181,10 @@ class TestCreateCrud(MindoffTestCase):
                 "fk_invalid_all_rejects",
                 [],
                 [
-                    {0: {"author_id": str(uuid.uuid4())}},
+                    {0: {"id": str(uuid.uuid4())}},
                     {
-                        0: {"book_id": str(uuid.uuid4())},
-                        1: {"author_id": str(uuid.uuid4())},
+                        0: {"id": str(uuid.uuid4())},
+                        1: {"author_ref_id": str(uuid.uuid4())},
                     },
                 ],
                 False,
@@ -362,6 +362,8 @@ class TestCreateCrud(MindoffTestCase):
             pks = df[pk_column].to_list()
             db_rows = model.objects.filter(**{f"{pk_field}__in": pks}).values()
             db_df = pl.DataFrame(list(db_rows))
+            all_db_rows = model.objects.all().values()
+            all_db_df = pl.DataFrame(list(all_db_rows))
             assert not mo_polars_kit.is_frm_empty(
                 db_df
             ), f"{model.__name__}: no rows found in database"
@@ -423,13 +425,13 @@ class TestReadCrud(MindoffTestCase):
         [
             (
                 lambda self, book: book.objects.all().values().order_by("id"),
-                ["id", "title", "pages", "author_id"],
+                ["id", "title", "pages", "author_ref_id"],
             ),
             (
                 lambda self, book: book.objects.annotate(
                     title_len=Count("title")
                 ).values(),
-                ["id", "title", "pages", "author_id", "title_len"],
+                ["id", "title", "pages", "author_ref_id", "title_len"],
             ),
             (lambda self, book: book.objects.values("id", "title"), ["id", "title"]),
             (
@@ -456,7 +458,7 @@ class TestReadCrud(MindoffTestCase):
         assert set(columns) == set(df.columns)
         for col in columns:
             assert col in df.columns, f"{col} not available in df.columns"
-            if col in ("id", "author_id"):
+            if col in ("id", "author_ref_id"):
                 convert_to_str = lambda row: (str(row) if row is not None else None)
                 df = mo_polars_kit.frm_fill_notnull(
                     df,
@@ -466,7 +468,7 @@ class TestReadCrud(MindoffTestCase):
                     mode="map",
                     dtype=pl.Utf8,
                 )
-                assert_count = 10 if col == "author_id" else 20
+                assert_count = 10 if col == "author_ref_id" else 20
                 assert (
                     df[col].n_unique() == assert_count
                 ), f"Column '{col}' has duplicates"
@@ -480,13 +482,13 @@ class TestReadCrud(MindoffTestCase):
         [
             (
                 lambda self, book: book.objects.all().values().order_by("id"),
-                ["id", "title", "pages", "author_id"],
+                ["id", "title", "pages", "author_ref_id"],
             ),
             (
                 lambda self, book: book.objects.annotate(
                     title_len=Count("title")
                 ).values(),
-                ["id", "title", "pages", "author_id", "title_len"],
+                ["id", "title", "pages", "author_ref_id", "title_len"],
             ),
             (lambda self, book: book.objects.values("id", "title"), ["id", "title"]),
             (
@@ -687,7 +689,7 @@ class TestUpdateCrud(MindoffTestCase):
             (
                 "upsert_non_existing_main",
                 [],
-                [{0: {"author_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
+                [{0: {"author_ref_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
                 "main",
                 "upsert",
                 "ok",
@@ -699,7 +701,7 @@ class TestUpdateCrud(MindoffTestCase):
                     {},
                     {
                         0: {
-                            "book_id": str(uuid.uuid4().hex),
+                            "book_ref_id": str(uuid.uuid4().hex),
                             "title": "Inserted Book",
                             "pages": 123,
                         }
@@ -715,17 +717,17 @@ class TestUpdateCrud(MindoffTestCase):
                 [
                     {
                         0: {
-                            "author_id": shared_uuid_author_book_relation,
+                            "author_ref_id": shared_uuid_author_book_relation,
                             "name": "Inserted Author",
                             "nickname": "Inserted Book",
                         }
                     },
                     {
                         0: {
-                            "book_id": str(uuid.uuid4().hex),
+                            "book_ref_id": str(uuid.uuid4().hex),
                             "edition": "Inserted Book Edition",
                             "title": "Inserted Book Title",
-                            "author_id": shared_uuid_author_book_relation,
+                            "author_ref_id": shared_uuid_author_book_relation,
                         }
                     },
                 ],
@@ -894,7 +896,7 @@ class TestUpdateCrud(MindoffTestCase):
             (
                 "upsert_non_existing_main",
                 [],
-                [{0: {"author_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
+                [{0: {"author_ref_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
                 "main",
                 "upsert",
                 "ok",
@@ -906,7 +908,7 @@ class TestUpdateCrud(MindoffTestCase):
                     {},
                     {
                         0: {
-                            "book_id": str(uuid.uuid4().hex),
+                            "book_ref_id": str(uuid.uuid4().hex),
                             "title": "Inserted Book",
                             "pages": 123,
                         }
@@ -922,17 +924,17 @@ class TestUpdateCrud(MindoffTestCase):
                 [
                     {
                         0: {
-                            "author_id": shared_uuid_author_book_relation,
+                            "author_ref_id": shared_uuid_author_book_relation,
                             "name": "Inserted Author",
                             "nickname": "Inserted Book",
                         }
                     },
                     {
                         0: {
-                            "book_id": str(uuid.uuid4().hex),
+                            "book_ref_id": str(uuid.uuid4().hex),
                             "edition": "Inserted Book Edition",
                             "title": "Inserted Book Title",
-                            "author_id": shared_uuid_author_book_relation,
+                            "author_ref_id": shared_uuid_author_book_relation,
                         }
                     },
                 ],

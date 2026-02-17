@@ -5,7 +5,7 @@ from .components.response_kit import load_responses_csv
 
 class DjangoMindoffConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.django_mindoff"
+    name = __name__.rpartition(".")[0]
 
     def ready(self):
         load_responses_csv()

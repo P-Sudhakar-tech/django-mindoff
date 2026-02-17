@@ -1,29 +1,24 @@
 from functools import partial
 from types import SimpleNamespace
-from typing import Any, Callable, Dict, Literal, Tuple, Type, Union
+from typing import List, Any, Callable, Dict, Literal, Tuple, Type, Union
 
 import polars as pl
+import pathlib
+import uuid
 from django.db import models
 from typeguard import typechecked
 
 from .validation_kit import mo_validation_kit
-from ._polars_kit.json_to_frame import json_to_frame
+from ._polars_kit.json_to_frame import json_to_frame, build_model_frms
 
 
 @typechecked
 def is_frm_empty(frm: pl.DataFrame | pl.LazyFrame) -> bool:
-    no_columns = False
-    no_rows = False
     if isinstance(frm, pl.DataFrame):
-        no_columns = len(frm.columns) == 0
-        no_rows = frm.is_empty()
-    elif isinstance(frm, pl.LazyFrame):
-        no_columns = len(frm.collect_schema()) == 0
-        if not no_columns:
-            no_rows = frm.limit(1).collect(engine="streaming").height == 0
-    else:
+        return frm.is_empty()
+    if not frm.collect_schema():
         return True
-    return no_columns or no_rows
+    return frm.limit(1).collect().is_empty()
 
 
 @typechecked
@@ -34,159 +29,138 @@ def is_model_frms_empty(
 
 
 @typechecked
-def has_nulls_in_frm_col(frm: pl.DataFrame | pl.LazyFrame, column: str) -> bool:
-    expr = pl.col(column).is_null().any()
-    if isinstance(frm, pl.DataFrame):
-        return frm.select(expr).item()
-    else:
-        return frm.select(expr).collect(engine="streaming").item()
+def is_model_frms_not_empty(
+    dfs: dict[type[models.Model], pl.DataFrame | pl.LazyFrame],
+) -> bool:
+    return any(not mo_polars_kit.is_frm_empty(df) for df in dfs.values())
 
 
 @typechecked
-def split_df_dict_on_column(
-    df_dict: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
-    column: str,
-) -> Tuple[
-    Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
-    Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+def has_nulls_in_frm_col(frm: pl.DataFrame | pl.LazyFrame, column: str) -> bool:
+    if isinstance(frm, pl.DataFrame):
+        return frm[column].null_count() > 0
+    return frm.select(pl.col(column).is_null().any()).collect().item()
+
+
+@typechecked
+def split_model_frms_on_column(
+    df_dict: dict[type[models.Model], pl.DataFrame | pl.LazyFrame],
+    column: str = "__error__info",
+) -> tuple[
+    dict[type[models.Model], pl.DataFrame | pl.LazyFrame],
+    dict[type[models.Model], pl.DataFrame | pl.LazyFrame],
 ]:
     valid_dfs, invalid_dfs = {}, {}
     for model, df in df_dict.items():
-        if column not in (
-            df.columns if isinstance(df, pl.DataFrame) else df.collect_schema()
-        ):
-            df = df.with_columns(pl.lit(None).alias(column))
-        valid = df.filter(pl.col(column).is_null())
-        invalid = df.filter(pl.col(column).is_not_null())
-        valid_dfs[model] = valid
-        invalid_dfs[model] = invalid
+        schema = df.schema
+        work_df = df
+        if column not in schema:
+            work_df = df.with_columns(pl.lit(None, dtype=pl.String).alias(column))
+        valid_dfs[model] = work_df.filter(pl.col(column).is_null())
+        invalid_dfs[model] = work_df.filter(pl.col(column).is_not_null())
     return valid_dfs, invalid_dfs
 
 
 @typechecked
 def frm_fill_null(
-    fr: Union[pl.DataFrame, pl.LazyFrame],
+    fr: pl.DataFrame | pl.LazyFrame,
     *,
     column: str,
-    fill_value: Union[Any, Callable[..., Any]],
-    mode: Literal["lit", "map", "pre-gen"],
+    fill_value: Any | Callable[..., Any],
+    mode: Literal["lit", "map", "sink_map"],
     dtype: type | None = None,
+    checkpoint_dir: str = "tmp_checkpoints",
     **custom_params: Any,
-) -> Union[pl.DataFrame, pl.LazyFrame]:
-    if callable(fill_value):
-        loaded_func = partial(fill_value, **custom_params)
-        apply_fill_value = lambda: loaded_func()
-    else:
-        apply_fill_value = lambda: fill_value
-    if mode == "map":
-        fr = fr.with_columns(
-            pl.col(column)
-            .map_elements(
-                lambda x: apply_fill_value() if x is None else x,
-                skip_nulls=False,
-                return_dtype=dtype,
-            )
-            .alias(column)
+) -> pl.DataFrame | pl.LazyFrame:
+    if mode == "lit":
+        value = fill_value(**custom_params) if callable(fill_value) else fill_value
+        return fr.with_columns(
+            pl.col(column).fill_null(pl.lit(value, dtype=dtype)).alias(column)
         )
+    mo_validation_kit.ensure_truthy(
+        callable(fill_value),
+        msg=f"fill_value must be callable when mode='{mode}'",
+        is_exception=True,
+    )
+    loaded_func = partial(fill_value, **custom_params)
+    target_dtype = dtype or fr.schema.get(column) or pl.String
 
-    elif mode == "pre-gen":
-        fr = fr.with_row_index("__mo_temp__idx")
-        null_rows = fr.filter(pl.col(column).is_null())
-        null_count = (
-            null_rows.select(pl.len()).collect(engine="streaming").item()
-            if isinstance(fr, pl.LazyFrame)
-            else null_rows.select(pl.len()).item()
-        )
-        not_null_rows = fr.filter(pl.col(column).is_not_null())
-        target_dtype = pl.Series([apply_fill_value()]).dtype
-        new_dtype = target_dtype if not dtype else dtype
-        null_rows = null_rows.with_columns(
-            pl.Series(column, [apply_fill_value() for _ in range(null_count)]).cast(
-                new_dtype
-            )
-        )
-        fr = (
-            pl.concat([null_rows, not_null_rows])
-            .sort("__mo_temp__idx")
-            .drop("__mo_temp__idx")
-        )
+    def _batch_fill(s: pl.Series) -> pl.Series:
+        if s.null_count() == 0:
+            return s
+        data = s.to_list()
+        for i, v in enumerate(data):
+            if v is None:
+                data[i] = loaded_func()
+        return pl.Series(s.name, data, dtype=target_dtype)
 
-    elif mode == "lit":
-        fr = fr.with_columns(
-            pl.col(column)
-            .fill_null(pl.lit(apply_fill_value(), allow_object=True))
-            .alias(column)
-        )
-
-    return fr
+    transformed_fr = fr.with_columns(
+        pl.col(column).map_batches(_batch_fill, return_dtype=target_dtype).alias(column)
+    )
+    if mode == "map" or isinstance(fr, pl.DataFrame):
+        return transformed_fr
+    if mode == "sink_map":
+        pathlib.Path(checkpoint_dir).mkdir(exist_ok=True)
+        tmp_path = f"{checkpoint_dir}/uuid_freeze_{uuid.uuid4().hex}.parquet"
+        transformed_fr.sink_parquet(tmp_path)
+        return pl.scan_parquet(tmp_path)
 
 
 @typechecked
 def frm_fill_notnull(
-    fr: Union[pl.DataFrame, pl.LazyFrame],
+    fr: pl.DataFrame | pl.LazyFrame,
     *,
     column: str,
-    fill_value: Union[Any, Callable[..., Any]],
-    mode: Literal["lit", "map", "pre-gen"],
+    fill_value: Any | Callable[..., Any],
+    mode: Literal["lit", "map", "sink_map"],
     row_param: str | None = None,
     dtype: type | None = None,
+    checkpoint_dir: str = "tmp_checkpoints",
     **custom_params: Any,
-) -> Union[pl.DataFrame, pl.LazyFrame]:
+) -> pl.DataFrame | pl.LazyFrame:
     mo_validation_kit.ensure(
-        lambda: not row_param or mode == "map",
-        msg="'row_param' can only be used with mode='map'",
+        lambda: not row_param or mode in ["map", "sink_map"],
+        msg="'row_param' can only be used with mode='map' or 'sink_map'",
         is_exception=True,
     )
-    if callable(fill_value):
-        loaded_func = partial(fill_value, **custom_params)
-        if row_param:
-            apply_fill_value = lambda x: loaded_func(**{row_param: x})
-        else:
-            apply_fill_value = lambda _: loaded_func()
-    else:
-        apply_fill_value = lambda: fill_value
-    if mode == "map":
-        fr = fr.with_columns(
-            pl.col(column)
-            .map_elements(
-                lambda x: apply_fill_value(x) if x is not None else x,
-                skip_nulls=True,
-                return_dtype=dtype,
-            )
-            .alias(column)
-        )
 
-    elif mode == "pre-gen":
-        fr = fr.with_row_index("__mo_temp__idx")
-        not_null_rows = fr.filter(pl.col(column).is_not_null())
-        not_null_count = (
-            not_null_rows.select(pl.len()).collect(engine="streaming").item()
-            if isinstance(fr, pl.LazyFrame)
-            else not_null_rows.select(pl.len()).item()
-        )
-        null_rows = fr.filter(pl.col(column).is_null())
-        target_dtype = pl.Series([apply_fill_value()]).dtype
-        new_dtype = target_dtype if not dtype else dtype
-        not_null_rows = not_null_rows.with_columns(
-            pl.Series(column, [apply_fill_value() for _ in range(not_null_count)]).cast(
-                new_dtype
-            )
-        )
-        fr = (
-            pl.concat([null_rows, not_null_rows])
-            .sort("__mo_temp__idx")
-            .drop("__mo_temp__idx")
-        )
-
-    elif mode == "lit":
-        fr = fr.with_columns(
+    if mode == "lit":
+        value = fill_value(**custom_params) if callable(fill_value) else fill_value
+        return fr.with_columns(
             pl.when(pl.col(column).is_not_null())
-            .then(pl.lit(apply_fill_value(), allow_object=True))
+            .then(pl.lit(value, dtype=dtype))
             .otherwise(pl.col(column))
             .alias(column)
         )
 
-    return fr
+    mo_validation_kit.ensure_truthy(
+        callable(fill_value),
+        msg=f"fill_value must be callable when mode='{mode}'",
+        is_exception=True,
+    )
+    loaded_func = partial(fill_value, **custom_params)
+    target_dtype = dtype or fr.schema.get(column) or pl.String
+
+    def _batch_fill(s: pl.Series) -> pl.Series:
+        if s.null_count() == s.len():
+            return s
+        data = s.to_list()
+        for i, v in enumerate(data):
+            if v is not None:
+                # Pass original value if row_param is defined
+                data[i] = loaded_func(**{row_param: v}) if row_param else loaded_func()
+        return pl.Series(s.name, data, dtype=target_dtype)
+
+    transformed_fr = fr.with_columns(
+        pl.col(column).map_batches(_batch_fill, return_dtype=target_dtype).alias(column)
+    )
+    if mode == "map" or isinstance(fr, pl.DataFrame):
+        return transformed_fr
+    if mode == "sink_map":
+        pathlib.Path(checkpoint_dir).mkdir(exist_ok=True)
+        tmp_path = f"{checkpoint_dir}/freeze_notnull_{uuid.uuid4().hex}.parquet"
+        transformed_fr.sink_parquet(tmp_path)
+        return pl.scan_parquet(tmp_path)
 
 
 @typechecked
@@ -227,15 +201,51 @@ def sync_model_frms_type(
     return synced_model_frms
 
 
+@typechecked
+def join_model_frms(
+    target: Dict[Type[models.Model], pl.DataFrame],
+    source: Dict[Type[models.Model], pl.DataFrame],
+    *,
+    on: str,
+    add: list[str],
+) -> Dict[Type[models.Model], pl.DataFrame]:
+
+    merged_results: Dict[Type[models.Model], pl.DataFrame] = {}
+    for model, original_df in target.items():
+        incoming_df = source.get(model)
+        if incoming_df is None or incoming_df.is_empty():
+            continue
+        if on not in original_df.columns:
+            raise ValueError(f"{on} not found in target for {model.__name__}")
+        if on not in incoming_df.columns:
+            raise ValueError(f"{on} not found in source for {model.__name__}")
+        for col in add:
+            if col not in incoming_df.columns:
+                raise ValueError(f"{col} not found in source for {model.__name__}")
+        incoming_subset = incoming_df.select([on, *add])
+        merged = original_df.join(
+            incoming_subset,
+            on=on,
+            how="left",
+        )
+        merged_results[model] = merged
+    return merged_results
+
+
 mo_polars_kit = SimpleNamespace(
     is_frm_empty=is_frm_empty,
     is_model_frms_empty=is_model_frms_empty,
+    is_model_frms_not_empty=is_model_frms_not_empty,
     has_nulls_in_frm_col=has_nulls_in_frm_col,
-    split_df_dict_on_column=split_df_dict_on_column,
+    split_model_frms_on_column=split_model_frms_on_column,
     frm_fill_null=frm_fill_null,
     frm_fill_notnull=frm_fill_notnull,
     get_frm_height=get_frm_height,
     collect_model_frms=collect_model_frms,
     sync_model_frms_type=sync_model_frms_type,
     json_to_frame=json_to_frame,
+    build_model_frms=build_model_frms,
+    join_model_frms=join_model_frms,
 )
+
+# ------------- HELPER FUNCTIONS --------------------

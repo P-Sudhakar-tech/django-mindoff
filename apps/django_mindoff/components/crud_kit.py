@@ -20,7 +20,10 @@ from ._crud_kit.crud_processor import CRUDProcessor
 from ._crud_kit.foreign_key_validator import ForeignKeyValidator
 from ._crud_kit.row_validator import RowValidator
 from .polars_kit import mo_polars_kit
-from .validation_kit import mo_validation_kit
+from .validation_kit import mo_validation_kit, MindoffValidationError
+from django.db.models import F
+from django.db.models.functions import Cast
+from django.db.models import CharField
 
 ERROR_COL = "__error__info"
 
@@ -451,6 +454,14 @@ def _update__fill_missing_columns(
             msg=f"Duplicate columns found during merge for model {model_cls.__name__}: {', '.join(overlap)}",
             is_exception=True,
         )
+
+        # Ensure join key dtypes match
+        left_dtype = df.schema[pk_field]
+        right_dtype = missing_df.schema.get(pk_field)
+
+        if right_dtype is not None and left_dtype != right_dtype:
+            missing_df = missing_df.with_columns(pl.col(pk_field).cast(left_dtype))
+
         df = df.join(missing_df, on=pk_field, how="left")
         updated_model_frames[model_cls] = df
 
@@ -465,16 +476,36 @@ def __update__fetch_missing_chunks(
     batch_size: int,
     base_missing_df,
 ):
-    pk_series = df.select(pk_field) if isinstance(df, pl.LazyFrame) else df[pk_field]
-    missing_df = base_missing_df
-    for chunk in pk_series.iter_slices(n_rows=batch_size):
-        pk_chunk = chunk.to_list()
-        qs = model_cls.objects.filter(**{f"{pk_field}__in": pk_chunk}).values(
-            pk_field, *missing_cols
+    is_lazy = isinstance(df, pl.LazyFrame)
+    if is_lazy:
+        pk_series = df.select(pk_field).collect(streaming=True)[pk_field]
+    else:
+        pk_series = df.get_column(pk_field)
+    if pk_series.is_empty():
+        return base_missing_df
+    pk_list = pk_series.to_list()
+    total_rows = len(pk_list)
+    collected_chunks = []
+    temp_pk = "__pk_cast"
+    if not mo_polars_kit.is_frm_empty(base_missing_df):
+        collected_chunks.append(base_missing_df)
+    for i in range(0, total_rows, batch_size):
+        pk_chunk = pk_list[i : i + batch_size]
+        qs = (
+            model_cls.objects.filter(**{f"{pk_field}__in": pk_chunk})
+            .annotate(**{temp_pk: Cast(F(pk_field), output_field=CharField())})
+            .values(temp_pk, *missing_cols)
         )
         chunk_df, _ = read(
-            qs, is_lazy=isinstance(df, pl.LazyFrame), batch_size=batch_size
+            qs,
+            is_lazy=is_lazy,
+            batch_size=batch_size,
         )
-        if not mo_polars_kit.is_frm_empty(chunk_df):
-            missing_df = pl.concat([missing_df, chunk_df], rechunk=False)
-    return missing_df
+        if mo_polars_kit.is_frm_empty(chunk_df):
+            continue
+        chunk_df = chunk_df.rename({temp_pk: pk_field})
+        collected_chunks.append(chunk_df)
+    if not collected_chunks:
+        return base_missing_df
+
+    return pl.concat(collected_chunks, rechunk=False)

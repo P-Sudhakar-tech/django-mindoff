@@ -14,9 +14,26 @@ import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
-
+from typing import Any, Callable, Dict, List, Optional, Union, Literal
 from .helper_kit import mo_helper_kit
+
+
+class MindoffValidationError(Exception):
+    def __init__(
+        self,
+        *,
+        message: str = "Validation Failed",
+        code: str = "VALIDATION_ERR",
+        category: str = "danger",
+        data: Optional[Dict[str, Any]] = None,
+    ):
+        if data is not None and not isinstance(data, (dict, list)):
+            raise TypeError(f"'data' must be dict or list, got {type(data).__name__}")
+        self.message = message
+        self.code = code
+        self.category = category
+        self.data = data or {}
+        super().__init__(message)
 
 
 class ValidationError(Exception):
@@ -35,7 +52,8 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
-        is_exception: bool = True,
+        code: str = "VALIDATION_ERR",
+        is_exception: bool = False,
         is_aggregate: bool = False,
     ):
         try:
@@ -64,6 +82,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_equal(
@@ -72,6 +91,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -85,6 +105,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_same(
@@ -93,6 +114,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -106,6 +128,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_same(
@@ -114,6 +137,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -127,6 +151,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_greater(
@@ -135,6 +160,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -153,6 +179,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_greater_equal(
@@ -161,6 +188,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -179,6 +207,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_lesser(
@@ -187,6 +216,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -205,6 +235,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_lesser_equal(
@@ -213,6 +244,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -231,6 +263,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_in_range(
@@ -240,6 +273,7 @@ class MindoffValidator:
         max_value: float,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -258,6 +292,7 @@ class MindoffValidator:
             context={"value": value, "min_value": min_value, "max_value": max_value},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_in_range(
@@ -267,6 +302,7 @@ class MindoffValidator:
         max_value: float,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -285,6 +321,7 @@ class MindoffValidator:
             context={"value": value, "min_value": min_value, "max_value": max_value},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_almost_equal(
@@ -294,6 +331,7 @@ class MindoffValidator:
         tol: float = 1e-6,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -312,6 +350,7 @@ class MindoffValidator:
             context={"left": left, "right": right, "tol": tol},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_almost_equal(
@@ -321,6 +360,7 @@ class MindoffValidator:
         tol: float = 1e-6,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -339,6 +379,7 @@ class MindoffValidator:
             context={"left": left, "right": right, "tol": tol},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     # Truthiness
@@ -348,6 +389,7 @@ class MindoffValidator:
         value: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -361,6 +403,7 @@ class MindoffValidator:
             context={"condition": value},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_truthy(
@@ -368,6 +411,7 @@ class MindoffValidator:
         value: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -381,6 +425,7 @@ class MindoffValidator:
             context={"condition": value},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     # Types & Classes
@@ -391,6 +436,7 @@ class MindoffValidator:
         typ: type,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -407,6 +453,7 @@ class MindoffValidator:
             context={"value": value, "typ": getattr(typ, "__name__", str(typ))},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_type(
@@ -415,6 +462,7 @@ class MindoffValidator:
         typ: type,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -428,6 +476,7 @@ class MindoffValidator:
             context={"value": value, "typ": getattr(typ, "__name__", str(typ))},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_subclass(
@@ -436,6 +485,7 @@ class MindoffValidator:
         parent: type,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -460,6 +510,7 @@ class MindoffValidator:
             },
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_subclass(
@@ -468,6 +519,7 @@ class MindoffValidator:
         parent: type,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -492,6 +544,7 @@ class MindoffValidator:
             },
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     # Containers & Collections
@@ -502,6 +555,7 @@ class MindoffValidator:
         container: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -522,6 +576,7 @@ class MindoffValidator:
             context={"value": value, "container": container},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_in(
@@ -530,6 +585,7 @@ class MindoffValidator:
         container: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -549,6 +605,7 @@ class MindoffValidator:
             context={"value": value, "container": container},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_count_equal(
@@ -557,6 +614,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -581,6 +639,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_count_not_equal(
@@ -589,6 +648,7 @@ class MindoffValidator:
         right: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -613,6 +673,7 @@ class MindoffValidator:
             context={"left": left, "right": right},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     # Numeric / Regex / File
@@ -622,6 +683,7 @@ class MindoffValidator:
         value: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -634,6 +696,7 @@ class MindoffValidator:
                 context={"value": value},
                 is_exception=is_exception,
                 is_aggregate=is_aggregate,
+                code=code,
             )
         ok = math.isfinite(value)
         message = msg or f"Expected finite number, got {value!r}"
@@ -645,6 +708,7 @@ class MindoffValidator:
             context={"value": value},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_regex(
@@ -653,6 +717,7 @@ class MindoffValidator:
         pattern: str,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -665,6 +730,7 @@ class MindoffValidator:
                 context={"value": value, "pattern": pattern},
                 is_exception=is_exception,
                 is_aggregate=is_aggregate,
+                code=code,
             )
         ok = bool(re.fullmatch(pattern, value))
         message = msg or f"String {value!r} does not match {pattern!r}"
@@ -676,6 +742,7 @@ class MindoffValidator:
             context={"value": value, "pattern": pattern},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_regex(
@@ -684,6 +751,7 @@ class MindoffValidator:
         pattern: str,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -696,6 +764,7 @@ class MindoffValidator:
                 context={"value": value, "pattern": pattern},
                 is_exception=is_exception,
                 is_aggregate=is_aggregate,
+                code=code,
             )
         ok = not bool(re.fullmatch(pattern, value))
         message = msg or f"String {value!r} matches {pattern!r}"
@@ -707,6 +776,7 @@ class MindoffValidator:
             context={"value": value, "pattern": pattern},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_path(
@@ -714,6 +784,7 @@ class MindoffValidator:
         path: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -728,6 +799,7 @@ class MindoffValidator:
             context={"path": str(p)},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     def ensure_not_path(
@@ -735,6 +807,7 @@ class MindoffValidator:
         path: Any,
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
     ):
@@ -749,6 +822,7 @@ class MindoffValidator:
             context={"path": str(p)},
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
     # ensure
@@ -758,6 +832,7 @@ class MindoffValidator:
         check: Union[bool, Callable[[], bool]],
         *,
         msg: Optional[str] = None,
+        code: str = "VALIDATION_ERR",
         is_exception: bool = False,
         is_aggregate: bool = False,
         exc_type: type[Exception] = ValidationError,
@@ -775,30 +850,51 @@ class MindoffValidator:
             message=message,
             is_exception=is_exception,
             is_aggregate=is_aggregate,
+            code=code,
         )
 
-    def finalize(self, *, is_exception: bool = True):
-        from .response_kit import mo_response_kit
-
+    def finalize(
+        self,
+        *,
+        code: str = "VALIDATION_ERR",
+        message: str = "Aggregated Validation Failed",
+        return_mode: Literal["list", "error", "exception"] = "error",
+    ):
         try:
-            if not self._errors:
-                return True if is_exception else None
+            has_errors = bool(self._errors)
 
-            if is_exception:
+            if not has_errors:
+                return {
+                    "list": [],
+                    "error": None,
+                    "exception": None,
+                }[return_mode]
+
+            if return_mode == "exception":
                 raise ValidationError(
                     "\n".join(
-                        f"[{e.type}] {e.message} {e.traceback}" for e in self._errors
+                        f"[{e.type}] [{e.code}] {e.message} {e.traceback}"
+                        for e in self._errors
                     )
                 )
-            response = {
-                "data": [
-                    {"type": e.type, "message": e.message, "context": e.context}
-                    for e in self._errors
-                ]
-            }
 
-            return mo_response_kit.json_response(
-                "VALIDATION_ERR", category="danger", **response
+            error_data = [
+                {
+                    "type": e.type,
+                    "code": e.code,
+                    "message": e.message,
+                    "context": e.context,
+                }
+                for e in self._errors
+            ]
+
+            if return_mode == "list":
+                return error_data
+
+            raise MindoffValidationError(
+                message=message,
+                code=code,
+                data=error_data,
             )
         finally:
             self.reset()
@@ -815,11 +911,10 @@ class MindoffValidator:
         exc_type: type[BaseException],
         message: str,
         context: Optional[Dict[str, Any]] = None,
-        is_exception: bool = True,
+        is_exception: bool = False,
         is_aggregate: bool = False,
+        code: str = "VALIDATION_ERR",
     ):
-        from .response_kit import mo_response_kit
-
         context = context or {}
 
         if ok:
@@ -832,26 +927,26 @@ class MindoffValidator:
             message=message,
             context=context,
             traceback=tb_text,
+            code=code,
         )
 
         if is_aggregate:
             self._errors.append(item)
-            return False if is_exception else None
+            return None
 
         if is_exception:
-            raise exc_type(message)
+            exc = exc_type(message)
+            setattr(exc, "code", code)
+            raise exc
 
-        response = {
-            "data": [
-                {
-                    "type": item.type,
-                    "message": item.message,
-                    "context": item.context,
-                }
-            ]
-        }
-        return mo_response_kit.json_response(
-            "VALIDATION_ERR", category="danger", **response
+        raise MindoffValidationError(
+            code=code,
+            message=message,
+            data={
+                "type": item.type,
+                "message": item.message,
+                "context": item.context,
+            },
         )
 
 
@@ -862,6 +957,7 @@ class _ErrorItem:
     message: str
     context: Dict[str, Any] = field(default_factory=dict)
     traceback: str = ""
+    code: str = "VALIDATION_ERR"
 
 
 mo_validation_kit = MindoffValidator()

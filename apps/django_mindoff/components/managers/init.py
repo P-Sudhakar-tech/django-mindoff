@@ -164,7 +164,9 @@ class DjangoProjectCreator:
 
     def _create_env_file(self):
         print("[ACTION] Writing .env file.")
-        Path(".env").write_text(f"DJANGO_SECRET_KEY={self.secret_key}\nDEBUG=True\n")
+        Path(".env").write_text(
+            f"DJANGO_SECRET_KEY={self.secret_key}\nDEBUG=True\nREDIS_URL=redis://127.0.0.1:6379/0\n"
+        )
 
     def _update_urls(self):
         print("[ACTION] Updating urls.py.")

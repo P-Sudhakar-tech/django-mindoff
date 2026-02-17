@@ -1,0 +1,55 @@
+from django_mindoff.components.api_kit import mo_api_kit
+from django_mindoff.components.response_kit import mo_response_kit
+from rest_framework.authentication import TokenAuthentication, BasicAuthentication
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from typing import Any, Dict, List, Union, Optional, Literal
+from django_mindoff.components.validation_kit import mo_validation_kit
+from django_mindoff.components.polars_kit import mo_polars_kit
+from django_mindoff.components.crud_kit import mo_crud_kit
+
+
+class MindOffSampleAPI(mo_api_kit.MindoffAPIMixin):
+    # 1. API Identity
+    api_url_name: str = "{{API_URL_NAME}}"
+    api_name: str = "{{API_HUMAN_NAME}}"
+    api_description: str = "API Description"
+
+    # 2. Access Rules
+    authentication_classes: list = []
+    permission_classes: list = []
+    method: Literal["get", "post", "put", "delete"] = "get"
+
+    # 3. Execution Rules
+    process_mode: Literal["direct", "queue"] = "direct"
+    allow_duplicate_queue: bool = False
+
+    # 4. Request Rules
+    payload_schema: list | dict | None = None
+    max_payload_size: int | float | None = 10  # in Megabytes(MB)
+    max_payload_depth: int | None = 20
+    payload_validation: Literal["strict", "basic", None] = None
+
+    # 4. Response Rules
+    response_type: Literal["json", "plain", "html", "xml", "binary", "others"] = "json"
+    response_validation: bool = True
+
+    # 5. Usage Limits Per User
+    api_request_limit: str | None = "30/m"
+    queue_status_polling_limit: str | None = "30/m"
+    queue_status_streaming_limit: int | None = 3
+
+    def run(self, request, *args, **kwargs):
+        # === Standard Mindoff request access guide ===
+        # request.method         → HTTP method
+        # request.data           → Body payload
+        # request.query_params   → Query string (?key=value)
+        # request.headers        → Dictionary-like access to HTTP headers
+        # request.user           → Authenticated user (if authentication is enabled)
+        # request.auth           → Authentication details/token (if any)
+        # request.FILES          → Uploaded files (multipart/form-data)
+        # kwargs.get("user_id")  → Value from <int:user_id> in the URL
+        # ----- 🚩 Add your API Logic below -----------
+
+        return mo_response_kit.json_response(
+            code="SUCCESS", category="success", data={}
+        )

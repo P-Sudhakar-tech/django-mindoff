@@ -3,8 +3,8 @@ from pathlib import Path
 
 from ..helper_kit import mo_helper_kit
 
-TEMPLATE_PATH = Path(__file__).parent / "resources" / "api_class.py"
-TEST_TEMPLATE_PATH = Path(__file__).parent / "resources" / "test_api_class.py"
+TEMPLATE_PATH = Path(__file__).parent / "resources" / "_api_class.py"
+TEST_TEMPLATE_PATH = Path(__file__).parent / "resources" / "_test_api_class.py"
 
 
 class DjangoApiCreator:

@@ -65,9 +65,8 @@ class DjangoModelCreator:
         model_path = Path(self.app.replace(".", "/")) / MODEL_FILE_NAME
         serializer_path = Path(self.app.replace(".", "/")) / "serializers.py"
 
-        # Only primary id field, no foreign keys
-        fields_code = f'id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="{self.base_name}_id")\n    # Add model fields above this line -- (MANAGED BY MINDOFF. DO NOT TOUCH THIS LINE)'
-
+        # Only primary id field, no foreign keys -- {self.base_name}_id
+        fields_code = f'id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="id")\n    # Add model fields above this line -- (MANAGED BY MINDOFF. DO NOT TOUCH THIS LINE)'
         model_code = f"""
 class {self.final_model_name}({self.parent_class}):
     {fields_code}
@@ -76,7 +75,7 @@ class {self.final_model_name}({self.parent_class}):
         db_table = 'tbl_{self.app_slug}_{self.base_name}'
 
     def __str__(self):
-        return str(self.{self.base_name}_id)
+        return str(self.id)
 """.strip()
 
         serializer_code = f"""

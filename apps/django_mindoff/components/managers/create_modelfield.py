@@ -64,7 +64,7 @@ class DjangoModelFieldCreator:
         try:
             app, model_raw = self.model_path.split("/")
         except ValueError:
-            raise ValueError("❌ Model path must be in format <app_name>/<ModelName>")
+            raise ValueError("Model path must be in format <app_name>/<ModelName>")
 
         self.app_slug = app.lower()
         self.model_name = self._format_model_name(model_raw)
@@ -72,17 +72,17 @@ class DjangoModelFieldCreator:
         self.model_file = Path.cwd() / "apps" / self.app_slug / MODEL_FILE_NAME
 
         if not self.model_file.exists():
-            raise FileNotFoundError(f"❌ models.py not found for app '{self.app_slug}'")
+            raise FileNotFoundError(f"models.py not found for app '{self.app_slug}'")
 
         model_text = self.model_file.read_text()
         if f"class {self.model_name}(" not in model_text:
             raise ValueError(
-                f"❌ Model '{self.model_name}' not found in {self.model_file}"
+                f"Model '{self.model_name}' not found in {self.model_file}"
             )
 
         if FIELD_INSERT_MARKER not in model_text:
             raise ValueError(
-                f"❌ Field insert marker not found in {self.model_name}. "
+                f"Field insert marker not found in {self.model_name}. "
                 "Refusing to modify file."
             )
 
@@ -104,7 +104,7 @@ class DjangoModelFieldCreator:
                 break
 
         if start is None:
-            raise ValueError(f"❌ Model '{self.model_name}' not found")
+            raise ValueError(f"Model '{self.model_name}' not found")
 
         for i in range(start + 1, len(lines)):
             if lines[i].startswith("class "):
@@ -113,13 +113,16 @@ class DjangoModelFieldCreator:
         return start, len(lines)
 
     def _validate_field_name(self):
-        if not re.match(r"^[a-z][a-z0-9_]*$", self.field_name):
-            raise ValueError(f"❌ Invalid field name '{self.field_name}'")
-
-        if self.field_name.endswith("_fk") or self.field_name.endswith("_rk"):
+        if self.field_name.endswith("_"):
             raise ValueError(
-                f"❌ Field name '{self.field_name}' cannot end with '_fk' or '_rk'"
+                f"Foreign key field name '{self.field_name}' cannot end with '_'"
             )
+
+        if not re.match(r"^[a-z][a-z0-9_]*$", self.field_name):
+            raise ValueError(f"Invalid field name '{self.field_name}'")
+
+        if not self.field_name.endswith("_ref"):
+            self.field_name = f"{self.field_name}_ref"
 
         lines = self.model_file.read_text().splitlines()
         start, end = self._get_model_block(lines)
@@ -127,25 +130,25 @@ class DjangoModelFieldCreator:
 
         if re.search(rf"\b{self.field_name}\s*=", model_block):
             raise ValueError(
-                f"❌ Field '{self.field_name}' already exists in {self.model_name}"
+                f"Field '{self.field_name}' already exists in {self.model_name}"
             )
 
     def _validate_foreign_key(self):
         if not self.to:
-            raise ValueError("❌ --to is required for foreign_key")
+            raise ValueError("--to is required for foreign_key")
 
         if self.on_delete not in VALID_ON_DELETE:
-            raise ValueError(f"❌ Invalid on_delete '{self.on_delete}'")
+            raise ValueError(f"Invalid on_delete '{self.on_delete}'")
 
         if self.on_delete == "SET_DEFAULT" and self.default is None:
             raise ValueError(
-                "❌ --default <value> is required when on_delete is SET_DEFAULT"
+                "--default <value> is required when on_delete is SET_DEFAULT"
             )
 
         try:
             parent_app, parent_model_raw = self.to.split("/")
         except ValueError:
-            raise ValueError("❌ --to must be in format <app_name>/<ModelName>")
+            raise ValueError("--to must be in format <app_name>/<ModelName>")
 
         parent_app = parent_app.lower()
         parent_model = self._format_model_name(parent_model_raw)
@@ -153,10 +156,10 @@ class DjangoModelFieldCreator:
         parent_model_file = Path.cwd() / "apps" / parent_app / MODEL_FILE_NAME
 
         if not parent_model_file.exists():
-            raise FileNotFoundError(f"❌ Parent app '{parent_app}' not found")
+            raise FileNotFoundError(f"Parent app '{parent_app}' not found")
 
         if f"class {parent_model}(" not in parent_model_file.read_text():
-            raise ValueError(f"❌ Parent model '{parent_model}' not found")
+            raise ValueError(f"Parent model '{parent_model}' not found")
 
         self.parent_app = parent_app
         self.parent_model = parent_model
@@ -206,7 +209,7 @@ class DjangoModelFieldCreator:
         return (
             f"{prefix}_"
             f"{self.model_name.replace('Model', '').lower()}_"
-            f"{self.field_name}_rk"
+            f"{self.field_name}_rev"
         )
 
     def _build_foreign_key_field(self) -> str:
@@ -221,7 +224,7 @@ class DjangoModelFieldCreator:
         options = [
             f"on_delete=models.{self.on_delete}",
             f"related_name='{related_name}'",
-            f"db_column='{self.field_name}_fk'",
+            f"db_column='{self.field_name}_id'",
         ]
 
         if self.optional:
@@ -259,9 +262,7 @@ class DjangoModelFieldCreator:
                 break
 
         if marker_index is None:
-            raise ValueError(
-                f"❌ Field insert marker not found inside {self.model_name}"
-            )
+            raise ValueError(f"Field insert marker not found inside {self.model_name}")
 
         if marker_index > start and lines[marker_index - 1].strip():
             lines.insert(marker_index, "")

@@ -617,7 +617,7 @@ class RowValidator:
                 value = str(value)
             return value
 
-        mode = "pre-gen" if callable(default) else "lit"
+        mode = "map" if callable(default) else "lit"
         return mo_polars_kit.frm_fill_null(
             df, column=field_name, fill_value=__apply_default, mode=mode
         )

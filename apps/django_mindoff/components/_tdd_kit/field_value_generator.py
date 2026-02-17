@@ -187,11 +187,9 @@ class FieldValueGenerator:
             return value
 
     def _gen_fallback(self):
-        return (
-            baker.prepare(self.field.related_model)
-            if getattr(self.field, "related_model", None)
-            else None
-        )
+        if getattr(self, "field", None) and getattr(self.field, "related_model", None):
+            return baker.prepare(self.field.related_model)
+        return None
 
 
 def generate_field_value(field, used_uniques, partial_kwargs, is_uuid_hex):

@@ -3,13 +3,16 @@ from pathlib import Path
 
 from ..helper_kit import mo_helper_kit
 
-TEMPLATE_PATH = Path(__file__).parent / "resources" / "api_class.py"
-TEST_TEMPLATE_PATH = Path(__file__).parent / "resources" / "test_api_class.py"
+TEMPLATE_PATH = Path(__file__).parent / "resources" / "_api_class.py"
+TEST_TEMPLATE_PATH = Path(__file__).parent / "resources" / "_test_api_class.py"
 
 
 class DjangoApiCreator:
-    def __init__(self, api_path: str, url_paths: list[str] = None):
+    def __init__(
+        self, api_path: str, url_paths: list[str] = None, base_path: Path = None
+    ):
         self.api_path = api_path
+        self.base_path = Path(base_path) if base_path else Path.cwd() / "apps"
         self.url_paths = url_paths or []
         self.original_app_name = None
         self.raw_api = None
@@ -19,6 +22,8 @@ class DjangoApiCreator:
         self.api_class_name = None
 
     def _normalize_app_name(self, dotted_path: str) -> str:
+        if self.base_path != Path.cwd() / "apps":
+            return dotted_path.lower()
         if not dotted_path.startswith("apps."):
             dotted_path = f"apps.{dotted_path}"
         app_names = dotted_path.split(".")
@@ -69,7 +74,7 @@ class DjangoApiCreator:
         self.api_human_name = " ".join(w.capitalize() for w in words)
 
     def _copy_template_and_replace(self):
-        app_dir = Path("apps") / self.original_app_name
+        app_dir = self.base_path / self.original_app_name
         view_path = app_dir / "views.py"
         if not TEMPLATE_PATH.exists():
             raise FileNotFoundError(f"API template not found at {TEMPLATE_PATH}")
@@ -123,7 +128,7 @@ class DjangoApiCreator:
             view_path.write_text(full_content)
 
     def _copy_test_template_and_replace(self):
-        tests_dir = Path("apps") / self.original_app_name / "tests"
+        tests_dir = self.base_path / self.original_app_name / "tests"
         test_path = tests_dir / "test_views.py"
         if not TEST_TEMPLATE_PATH.exists():
             raise FileNotFoundError(f"Test template not found at {TEST_TEMPLATE_PATH}")
@@ -185,7 +190,7 @@ class DjangoApiCreator:
         return import_lines, code_lines
 
     def _update_urls(self):
-        urls_path = Path("apps") / self.original_app_name / "urls.py"
+        urls_path = self.base_path / self.original_app_name / "urls.py"
         if not urls_path.exists():
             raise FileNotFoundError(f"urls.py not found at {urls_path}")
 
@@ -215,7 +220,7 @@ class DjangoApiCreator:
                 norm_url, existing_names, existing_names_lower
             )
             insert_lines.append(
-                f"    path('{norm_url}', views.{self.api_function_name}.as_view(), name='{route_name}'),"
+                f"    path('{norm_url}', views.{self.api_class_name}.as_view(), name='{route_name}'),"
             )
 
         new_text = pattern.sub(r"\1" + "\n".join(insert_lines) + r"\n\2", text)
@@ -231,7 +236,7 @@ class DjangoApiCreator:
             raise FileExistsError(f"URL name '{route_name}' already exists in urls.py")
         if route_name.lower() in existing_names_lower:
             print(
-                f"⚠️  Warning: Route name '{route_name}' may collide with an existing name if case is ignored."
+                f"[WARNING] Route name '{route_name}' may collide with an existing name if case is ignored."
             )
         return route_name
 

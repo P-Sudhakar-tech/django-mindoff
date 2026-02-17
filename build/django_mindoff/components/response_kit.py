@@ -26,12 +26,45 @@ from typeguard import typechecked
 from .helper_kit import mo_helper_kit
 from .validation_kit import mo_validation_kit
 
-# ----------------------------------
-# Constants
-# ----------------------------------
-REQUIRED_HEADERS = ["code", "title", "description", "status"]
-ALLOWED_STATUSES = {"ok", "fail"}
+
+SUPPORTED_HTTP_STATUS = {
+    200,
+    201,
+    202,
+    400,
+    401,
+    403,
+    404,
+    409,
+    422,
+    429,
+    500,
+    502,
+    503,
+}
+
+STATUS_CODE_TO_STATUS = {
+    200: "ok",
+    201: "ok",
+    202: "queued",
+    400: "fail",
+    401: "fail",
+    403: "fail",
+    404: "fail",
+    409: "fail",
+    422: "fail",
+    429: "fail",
+    500: "exception",
+    502: "exception",
+    503: "exception",
+}
+
 MINDOFF_RESPONSES = {}
+BASE_DIR = Path(__file__).resolve().parent.parent
+REQUIRED_HEADERS = ["code", "title", "description", "http_status"]
+DEFAULT_RESPONSES_CSV = (
+    BASE_DIR / "components" / "managers" / "resources" / "responses.csv"
+)
 logger = logging.getLogger(__name__)
 CategoryOptions = Literal["danger", "warning", "info", "success"]
 default_json_response_status = "fail"
@@ -94,16 +127,15 @@ def load_responses_csv(csv_location=None):
             )
             seen_codes.add(code)
             row_data["code"] = code
-            status_value = row_data["status"].strip().lower()
-            mo_validation_kit.ensure_in(
-                status_value,
-                ALLOWED_STATUSES,
-                msg=(
-                    f"Invalid status '{row_data['status']}' at line {line_num}. "
-                    f"Allowed values: {sorted(ALLOWED_STATUSES)}"
-                ),
+            http_status = int(row_data["http_status"])
+            mo_validation_kit.ensure(
+                (100 <= http_status <= 599),
+                msg=f"Unsupported HTTP status '{http_status}' at line {line_num} in responses.csv. "
+                "Valid range is 100 to 599.",
                 is_exception=True,
             )
+            derived_status = _derive_status_from_http(http_status)
+
             for k, v in row_data.items():
                 mo_validation_kit.ensure_truthy(
                     value=v, msg=f"Empty '{k}' at line {line_num}", is_exception=True
@@ -111,40 +143,14 @@ def load_responses_csv(csv_location=None):
             responses[code] = {
                 "title": row_data["title"],
                 "description": row_data["description"],
-                "status": status_value,
+                "http_status": http_status,
+                "status": derived_status,
             }
-    defaults = {
-        default_json_response_code: {
-            "status": default_json_response_status,
-            "code": default_json_response_code,
-            "title": default_json_response_title,
-            "description": default_json_response_description,
-        },
-        "VALIDATION_ERR": {
-            "status": default_json_response_status,
-            "code": "VALIDATION_ERR",
-            "title": "Validation Failed",
-            "description": "Submitted data failed validation.",
-        },
-        "SUCCESS": {
-            "status": "ok",
-            "code": "SUCCESS",
-            "title": "Success",
-            "description": "Operation completed successfully.",
-        },
-        "PAYLOAD_SIZE_ERR": {
-            "status": "fail",
-            "code": "PAYLOAD_SIZE_ERR",
-            "title": "Payload Size Exceeded Limit",
-            "description": "Payload cannot exceed the allowed size limit of 5 MB.",
-        },
-        "PAYLOAD_TYPE_ERR": {
-            "status": "fail",
-            "code": "PAYLOAD_TYPE_ERR",
-            "title": "Payload Schema Mismatch",
-            "description": "The Provided payload does not match the expected type.",
-        },
-    }
+    defaults = _load_response_defaults(
+        fallback_code=default_json_response_code,
+        fallback_title=default_json_response_title,
+        fallback_description=default_json_response_description,
+    )
 
     for k, v in defaults.items():
         responses.setdefault(k, v)
@@ -164,7 +170,7 @@ def json_response(
 ):
     json_response_msg = default_json_response.copy()
     if code not in MINDOFF_RESPONSES or code == "":
-        e = ValueError(f"Unknown error code: '{code}'")
+        e = ValueError(f"Unknown Response code: '{code}'")
         return json_response(
             code="UNEXPECTED_ERR", category="danger", data=[], exception=e
         )
@@ -200,19 +206,17 @@ def json_response(
                 tb_text,
                 code,
             )
-    json_response_msg["status"] = response["status"]
+    json_response_msg["status"] = _derive_status_from_http(response["http_status"])
     json_response_msg["message"]["code"] = code
     json_response_msg["message"]["title"] = response["title"]
     json_response_msg["message"]["description"] = description
     json_response_msg["message"]["category"] = category
     json_response_msg["data"] = data or []
+    http_status = response["http_status"]
+
     return Response(
         json_response_msg,
-        status=(
-            status.HTTP_200_OK
-            if json_response_msg.get("status") == "ok"
-            else status.HTTP_400_BAD_REQUEST
-        ),
+        status=http_status,
     )
 
 
@@ -293,3 +297,49 @@ mo_response_kit = SimpleNamespace(
 # ----------------------------------
 def _get_csv_path():
     return Path(settings.BASE_DIR) / "config" / "responses.csv"
+
+
+def _derive_status_from_http(status_code: int) -> str:
+    if status_code in STATUS_CODE_TO_STATUS:
+        return STATUS_CODE_TO_STATUS[status_code]
+
+    if 200 <= status_code < 300:
+        return "ok"
+    if 400 <= status_code < 500:
+        return "fail"
+    if 500 <= status_code < 600:
+        return "exception"
+
+    raise ValueError(f"Unsupported HTTP status code: {status_code}")
+
+
+def _load_response_defaults(
+    *,
+    fallback_code: str,
+    fallback_title: str,
+    fallback_description: str,
+) -> Dict[str, dict]:
+    defaults: Dict[str, dict] = {}
+
+    with DEFAULT_RESPONSES_CSV.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            http_status = int(row["http_status"])
+            defaults[row["code"]] = {
+                "http_status": http_status,
+                "status": _derive_status_from_http(http_status),
+                "code": row["code"],
+                "title": row["title"],
+                "description": row["description"],
+            }
+
+    # always inject the fallback / unexpected error
+    defaults[fallback_code] = {
+        "http_status": 500,
+        "status": _derive_status_from_http(500),
+        "code": fallback_code,
+        "title": fallback_title,
+        "description": fallback_description,
+    }
+
+    return defaults

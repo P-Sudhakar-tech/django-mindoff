@@ -8,11 +8,13 @@ mo_response_kit.json_response(code="ERR", category="danger", data=[], exception=
 """
 import csv
 import io
+import os
 import logging
 import mimetypes
 import textwrap
 import traceback
 import uuid
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Literal, Union
@@ -89,6 +91,24 @@ default_json_response = {
 # 1. Load responses from config/responses.csv into MINDOFF_RESPONSES dict.
 def load_responses_csv(csv_location=None):
     csv_path = csv_location or _get_csv_path()
+    # --- New Logic Start ---
+    if not os.path.exists(csv_path):
+        try:
+            from .managers import resources as resource_pkg
+
+            fallback_path = os.path.join(
+                os.path.dirname(resource_pkg.__file__), "responses.csv"
+            )
+            if os.path.exists(fallback_path):
+                os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                shutil.copy2(fallback_path, csv_path)
+            else:
+                raise FileNotFoundError
+        except (ImportError, FileNotFoundError):
+            raise FileNotFoundError(
+                "no responses.csv found in config folder or django-mindoff resources folder. "
+                "Is django mindoff installed properly globally?"
+            )
     mo_validation_kit.ensure_path(path=csv_path, is_exception=True)
     with open(csv_path, newline="", encoding="utf-8") as csvfile:
         sample = csvfile.read(1024)

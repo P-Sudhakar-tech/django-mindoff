@@ -6,6 +6,7 @@
 # ==========================================================
 import shutil
 import sys
+import secrets
 import tempfile
 import uuid
 from collections import namedtuple
@@ -29,6 +30,8 @@ from ._tdd_kit import field_value_generator
 from django.urls import reverse
 from rest_framework.test import APIClient
 from http import HTTPStatus
+from ..components.managers.create_app import DjangoAppCreator
+from django.urls import clear_url_caches
 
 
 # ==========================================================
@@ -68,44 +71,103 @@ class MindoffTestCase:
 
     @pytest.fixture
     def _mo_mock_app(self, request):
-        """Temporary Django App Creation Fixure."""
-        CreatedApp = namedtuple("CreatedApp", ["app_name", "temp_dir", "override"])
-        created_apps = []
+        """
+        Temporary Django App Creation Fixture (isolated, real-structure).
+        """
 
-        @typechecked
-        def __setup(app_name: str | None = None):
+        CreatedApp = namedtuple(
+            "CreatedApp", ["app_name", "temp_dir", "override", "creator"]
+        )
+        created_apps: list[CreatedApp] = []
+
+        def __setup(app_name: str | None = None, *, is_return_path: bool = False):
             app_name = _validate_or_generate_app_name(created_apps, app_name)
             app_name = app_name.lower().replace(" ", "_")
-            temp_dir = Path(tempfile.mkdtemp())
-            if "." in app_name:
-                parts = app_name.split(".")
-                app_path = temp_dir.joinpath(*parts)
-            else:
-                app_path = temp_dir / app_name
-            app_path.mkdir(parents=True, exist_ok=True)
-            (app_path / "__init__.py").write_text("")
-            (app_path / "models.py").write_text("from django.db import models\n")
+
+            # Create a unique temp directory for this specific app
+            temp_dir = Path(tempfile.mkdtemp()).resolve()
+
+            # Add the temp_dir to the START of sys.path
+            # This ensures that when we say 'import {app_name}', Python looks here first
             sys.path.insert(0, str(temp_dir))
-            new_installed = list(settings.INSTALLED_APPS) + [app_name]
-            override = override_settings(INSTALLED_APPS=new_installed)
+
+            # In isolation mode, the dotted_path is just the app_name itself
+            dotted_path = app_name
+            app_dir = temp_dir / app_name
+
+            # --- Create app ---
+            # We use dotted_path (just the name) so apps.py shows: name = 'test_app'
+            creator = DjangoAppCreator(dotted_path, isolated=True)
+            creator.project_root = temp_dir
+            creator.app_dir = str(app_dir)
+            creator.settings_path = temp_dir / "dummy_settings.py"
+            creator.urls_path = temp_dir / "dummy_urls.py"
+            creator.run()
+
+            # --- URL and Settings Overrides ---
+            mock_root_urlconf_name = f"urls_{app_name}"
+            mock_root_path = temp_dir / f"{mock_root_urlconf_name}.py"
+
+            mock_root_content = f"""
+from django.urls import path, include
+from {settings.ROOT_URLCONF} import urlpatterns as original_patterns
+import {dotted_path}.urls
+
+urlpatterns = original_patterns + [
+    path('{app_name}/', include('{dotted_path}.urls')),
+]
+            """
+            mock_root_path.write_text(mock_root_content)
+
+            override = override_settings(
+                INSTALLED_APPS=list(settings.INSTALLED_APPS) + [dotted_path],
+                ROOT_URLCONF=mock_root_urlconf_name,
+            )
             override.enable()
-            apps.set_installed_apps(new_installed)
-            created_apps.append(CreatedApp(app_name, temp_dir, override))
+
+            apps.set_installed_apps(settings.INSTALLED_APPS)
+            apps.clear_cache()
+            clear_url_caches()
+            if is_return_path:
+                return (
+                    app_name,
+                    temp_dir,
+                )
             return app_name
 
         def __teardown():
             while created_apps:
-                app_name, temp_dir, override = created_apps.pop()
-                apps.app_configs.pop(app_name, None)
-                apps.clear_cache()
-                sys.path[:] = [p for p in sys.path if p != str(temp_dir)]
-                sys_modules = list(sys.modules.keys())
-                for mod in sys_modules:
-                    if mod == app_name or mod.startswith(f"{app_name}."):
-                        sys.modules.pop(mod, None)
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                app_name, temp_dir, override, _ = created_apps.pop()
                 override.disable()
+                root_url_mod = f"urls_{app_name}"
+
+                # CRITICAL: Clear URL caches BEFORE removing modules
+                clear_url_caches()
+
+                # Remove app modules - be thorough with all submodules
+                mods_to_remove = [
+                    mod_name
+                    for mod_name in list(sys.modules.keys())
+                    if (
+                        mod_name == app_name
+                        or mod_name.startswith(f"{app_name}.")
+                        or mod_name == root_url_mod
+                        or mod_name.startswith(f"{root_url_mod}.")
+                    )
+                ]
+
+                for mod_name in mods_to_remove:
+                    sys.modules.pop(mod_name, None)
+
+                # Remove temp directory from sys.path
+                sys.path[:] = [p for p in sys.path if str(p) != str(temp_dir)]
+
+                # Clean up filesystem
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+            # Final Django house-cleaning - AFTER all apps are removed
             apps.clear_cache()
+            clear_url_caches()
             apps.populate(settings.INSTALLED_APPS)
 
         request.addfinalizer(__teardown)
@@ -116,6 +178,7 @@ class MindoffTestCase:
         """Temporary Django Model Creation Fixure."""
         # ---- Setup ----
         created_models = []
+        auto_created_app = None  # Track if we auto-created an app
 
         @typechecked
         def __setup(
@@ -127,16 +190,51 @@ class MindoffTestCase:
             fields: dict = {},
             base_model=models.Model,
         ):
+            nonlocal auto_created_app
+
             status, foreign_keys = _normalize_fk_and_validate_mockmodel_params(
                 model_name, table_name, foreign_keys
             )
             mo_validation_kit.ensure_truthy(status)
+
+            # Handle app_name resolution with fallback
             if app_name:
                 app_name = _validate_or_generate_app_name(
                     app_name=app_name, is_exists=True
                 )
             else:
-                app_name = mo_helper_kit.get_current_app_name()
+                # Try to get current app name, fallback to auto-generation
+                try:
+                    app_name = mo_helper_kit.get_current_app_name()
+                except (ValueError, AttributeError, IndexError):
+                    # Auto-create a temp app if no app context is available
+                    if auto_created_app is None:
+                        # Create app only once per fixture scope
+                        app_name = _validate_or_generate_app_name(created_apps=[])
+
+                        # Create the temporary app structure
+                        temp_dir = Path(tempfile.mkdtemp())
+                        app_path = temp_dir / app_name
+                        app_path.mkdir(parents=True, exist_ok=True)
+                        (app_path / "__init__.py").write_text("")
+                        (app_path / "models.py").write_text(
+                            "from django.db import models\n"
+                        )
+
+                        sys.path.insert(0, str(temp_dir))
+                        new_installed = list(settings.INSTALLED_APPS) + [app_name]
+                        override = override_settings(INSTALLED_APPS=new_installed)
+                        override.enable()
+                        apps.set_installed_apps(new_installed)
+
+                        auto_created_app = {
+                            "name": app_name,
+                            "temp_dir": temp_dir,
+                            "override": override,
+                        }
+                    else:
+                        app_name = auto_created_app["name"]
+
             model_name = _validate_or_generate_model_name(created_models, model_name)
             if not table_name:
                 table_name = mo_helper_kit.pascal_to_snake(
@@ -155,11 +253,31 @@ class MindoffTestCase:
             return model_class
 
         def __teardown():
-            if not created_models:
-                return
-            with connection.schema_editor() as editor:
-                for model in created_models:
-                    editor.delete_model(model)
+            nonlocal auto_created_app
+
+            # Delete models first
+            if created_models:
+                with connection.schema_editor() as editor:
+                    for model in created_models:
+                        editor.delete_model(model)
+
+            # Clean up auto-created app if it exists
+            if auto_created_app is not None:
+                app_name = auto_created_app["name"]
+                temp_dir = auto_created_app["temp_dir"]
+                override = auto_created_app["override"]
+
+                apps.app_configs.pop(app_name, None)
+                apps.clear_cache()
+                sys.path[:] = [p for p in sys.path if p != str(temp_dir)]
+                sys_modules = list(sys.modules.keys())
+                for mod in sys_modules:
+                    if mod == app_name or mod.startswith(f"{app_name}."):
+                        sys.modules.pop(mod, None)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                override.disable()
+                apps.clear_cache()
+                apps.populate(settings.INSTALLED_APPS)
 
         request.addfinalizer(__teardown)
         return __setup
@@ -551,11 +669,11 @@ def _create_model(
     base_model=models.Model,
 ):
     model_fields = {
-        "id": models.UUIDField(
+        f"id": models.UUIDField(
             primary_key=True,
             default=uuid.uuid4,
             editable=False,
-            db_column=f"{table_name}_id",
+            db_column=f"id",  # "{table_name}_id"
         ),
         "__module__": __name__,
     }
@@ -588,7 +706,7 @@ def _create_model(
     model_fields["Meta"] = Meta
 
     def __str__(self):
-        return str(self.id)
+        return str(getattr(self, self._meta.pk.attname))
 
     model_fields["__str__"] = __str__
     return type(model_name, (base_model,), model_fields)
@@ -599,12 +717,7 @@ def _validate_or_generate_app_name(
 ):
     existing_apps = set(apps.app_configs.keys()) | set(created_apps)
     if not app_name:
-        base_name = "test_app"
-        counter = 1
-        while base_name in existing_apps:
-            base_name = f"test_app_{counter}"
-            counter += 1
-        app_name = base_name
+        app_name = f"app_{uuid.uuid4().hex[:12]}"
     if not is_exists and app_name in existing_apps:
         raise ValueError(f"App name '{app_name}' already exists.")
     elif is_exists and app_name not in existing_apps:
@@ -635,7 +748,8 @@ def _validate_model(model_class):
 
     # Check model fields exist and have proper types
     fields = {f.name: f for f in model_class._meta.concrete_fields}
-    test_case.assertIn("id", fields)
+    pk_name = model_class._meta.pk.name
+    test_case.assertIn(pk_name, fields)
     for field in fields.values():
         if field.is_relation and field.many_to_one:
             test_case.assertIsNotNone(field.related_model)

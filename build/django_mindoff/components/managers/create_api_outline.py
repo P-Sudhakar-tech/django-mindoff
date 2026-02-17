@@ -25,7 +25,9 @@ class ApiOutlineCreator:
                 module = importlib.import_module(app_name)
                 app_path = os.path.dirname(module.__file__)
             except Exception:
-                print(f"Skipping '{app_name}': not defined in settings as a local app")
+                print(
+                    f"[ACTION] Skipping '{app_name}': not defined in settings as a local app"
+                )
                 continue
 
             outlines = {}
@@ -46,12 +48,12 @@ class ApiOutlineCreator:
                 )
                 with open(output_path, "w") as f:
                     f.write(formatted_content)
-                print(f"API Outline generated for app '{app_name}'")
+                print(f"[OK] API Outline generated for app '{app_name}'")
             else:
                 if os.path.exists(output_path):
                     os.remove(output_path)
                 print(
-                    f"Skipping '{app_name}': no valid Django-Mindoff API found in views.py or _views directory"
+                    f"[ACTION] Skipping '{app_name}': no valid Django-Mindoff API found in views.py or _views directory"
                 )
 
     # ======== First-level helper ========

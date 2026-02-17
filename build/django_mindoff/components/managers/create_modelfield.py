@@ -116,9 +116,9 @@ class DjangoModelFieldCreator:
         if not re.match(r"^[a-z][a-z0-9_]*$", self.field_name):
             raise ValueError(f"❌ Invalid field name '{self.field_name}'")
 
-        if self.field_name.endswith("_fk") or self.field_name.endswith("_rk"):
+        if self.field_name.endswith("_ref") or self.field_name.endswith("_rk"):
             raise ValueError(
-                f"❌ Field name '{self.field_name}' cannot end with '_fk' or '_rk'"
+                f"❌ Field name '{self.field_name}' cannot end with '_ref' or '_rk'"
             )
 
         lines = self.model_file.read_text().splitlines()
@@ -221,7 +221,7 @@ class DjangoModelFieldCreator:
         options = [
             f"on_delete=models.{self.on_delete}",
             f"related_name='{related_name}'",
-            f"db_column='{self.field_name}_fk'",
+            f"db_column='{self.field_name}_ref'",
         ]
 
         if self.optional:
@@ -273,7 +273,7 @@ class DjangoModelFieldCreator:
 
         self.model_file.write_text("\n".join(lines))
         print(
-            f"✅ Added ForeignKey '{self.field_name}' to {self.model_name}. Any additional parameters need to be added in respective models.py"
+            f"[OK] Added ForeignKey '{self.field_name}' to {self.model_name}. Any additional parameters need to be added in respective models.py"
         )
 
     # -------------------------
