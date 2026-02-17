@@ -138,7 +138,7 @@ urlpatterns = original_patterns + [
                 # Remove app modules - be thorough with all submodules
                 mods_to_remove = [
                     mod_name
-                    for mod_name in list(sys.modules.keys())
+                    for mod_name in (sys.modules.keys())
                     if (
                         mod_name == app_name
                         or mod_name.startswith(f"{app_name}.")
