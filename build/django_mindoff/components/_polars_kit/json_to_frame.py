@@ -7,9 +7,15 @@ from typeguard import typechecked
 
 from ..validation_kit import mo_validation_kit
 
+# ----------------
+# Constants
+# ----------------
 MODEL_FRMS_DEFAULT_ROOT_KEY = "__root__"
 
 
+# ----------------
+# Classes
+# ----------------
 class PayloadFlattener:
     def __init__(
         self,
@@ -265,11 +271,9 @@ class PayloadFlattener:
                     self.results[table] = self.results[table].drop(drop_cols)
 
 
-# ------------------------------------------------------------------ #
-# Public helpers
-# ------------------------------------------------------------------ #
-
-
+# ----------------
+# Functions
+# ----------------
 @typechecked
 def json_to_frame(
     payload: List[Dict] | Dict,

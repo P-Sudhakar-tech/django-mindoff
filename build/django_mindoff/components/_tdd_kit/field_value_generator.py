@@ -8,6 +8,9 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from model_bakery import baker
 
 
+# ----------------
+# Classes
+# ----------------
 class FieldValueGenerator:
     def __init__(self, field, used_uniques, partial_kwargs, is_uuid_hex):
         self.field = field
@@ -26,12 +29,6 @@ class FieldValueGenerator:
             ):
                 value = value.hex
             return value
-
-        # null_blank_decision = self._choose_null_blank_outcome()
-        # if null_blank_decision == "null":
-        #     return None
-        # elif null_blank_decision == "blank":
-        #     return ""
 
         field_type = self.field.get_internal_type()
         method_name = f"_gen_{field_type.lower()}"
@@ -187,13 +184,14 @@ class FieldValueGenerator:
             return value
 
     def _gen_fallback(self):
-        return (
-            baker.prepare(self.field.related_model)
-            if getattr(self.field, "related_model", None)
-            else None
-        )
+        if getattr(self, "field", None) and getattr(self.field, "related_model", None):
+            return baker.prepare(self.field.related_model)
+        return None
 
 
+# ----------------
+# Functions
+# ----------------
 def generate_field_value(field, used_uniques, partial_kwargs, is_uuid_hex):
     return FieldValueGenerator(
         field=field,

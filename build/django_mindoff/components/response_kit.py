@@ -1,18 +1,12 @@
-# ----------------------------------
-# response_kit.py
-# ----------------------------------
-"""
-USAGE:
-mo_response_kit.json_response(code="ERR", category="danger", data=[])
-mo_response_kit.json_response(code="ERR", category="danger", data=[], exception=e)
-"""
 import csv
 import io
+import os
 import logging
 import mimetypes
 import textwrap
 import traceback
 import uuid
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Literal, Union
@@ -26,47 +20,20 @@ from typeguard import typechecked
 from .helper_kit import mo_helper_kit
 from .validation_kit import mo_validation_kit
 
-
-SUPPORTED_HTTP_STATUS = {
-    200,
-    201,
-    202,
-    400,
-    401,
-    403,
-    404,
-    409,
-    422,
-    429,
-    500,
-    502,
-    503,
-}
-
-STATUS_CODE_TO_STATUS = {
-    200: "ok",
-    201: "ok",
+# ----------------
+# Constants
+# ----------------
+CUSTOM_STATUS_CODE_TO_STATUS = {
     202: "queued",
-    400: "fail",
-    401: "fail",
-    403: "fail",
-    404: "fail",
-    409: "fail",
-    422: "fail",
-    429: "fail",
-    500: "exception",
-    502: "exception",
-    503: "exception",
 }
-
 MINDOFF_RESPONSES = {}
+RESPONSES_FILE_NAME = "responses.csv"
 BASE_DIR = Path(__file__).resolve().parent.parent
 REQUIRED_HEADERS = ["code", "title", "description", "http_status"]
 DEFAULT_RESPONSES_CSV = (
-    BASE_DIR / "components" / "managers" / "resources" / "responses.csv"
+    BASE_DIR / "components" / "managers" / "resources" / RESPONSES_FILE_NAME
 )
 logger = logging.getLogger(__name__)
-CategoryOptions = Literal["danger", "warning", "info", "success"]
 default_json_response_status = "fail"
 default_json_response_code = "UNEXPECTED_ERR"
 default_json_response_title = "Uh Oh!"
@@ -83,12 +50,161 @@ default_json_response = {
 }
 
 
+# ----------------
+# Classes
+# ----------------
+class MindoffResponseHandler:
+    # -- 1. Json response
+    @typechecked
+    def json_response(
+        self,
+        *,
+        code: str = "",
+        category: Literal["danger", "warning", "info", "success"] = "danger",
+        data: Union[Dict[str, Any], List[Dict[str, Any]]] = {},
+        exception: Exception | None = None,
+    ):
+        json_response_msg = default_json_response.copy()
+        if code not in MINDOFF_RESPONSES or code == "":
+            e = ValueError(f"Unknown Response code: '{code}'")
+            return MindoffResponseHandler().json_response(
+                code="UNEXPECTED_ERR", category="danger", data=[], exception=e
+            )
+        response = MINDOFF_RESPONSES[code]
+        description = response["description"]
+        if exception is not None:
+            exception_name = exception.__class__.__name__
+            if exception is not None and exception.__traceback__ is not None:
+                tb_text = "".join(
+                    traceback.format_exception(
+                        type(exception), exception, exception.__traceback__
+                    )
+                )
+            else:
+                tb_text = mo_helper_kit.get_exact_traceback()
+            pretty_tb = textwrap.indent(tb_text, "    ")
+            if settings.DEBUG:
+                description = f"{description} | {exception_name}"
+                print(
+                    f"\n========== [MINDOFF EXCEPTION START] ==========\n"
+                    f"Exception: {exception}\n"
+                    f"Traceback:\n{pretty_tb}\n"
+                    f"========== [MINDOFF EXCEPTION END] ==========\n"
+                )
+            else:
+                logger.error(
+                    "\n========== [MINDOFF EXCEPTION START: %s] ==========\n"
+                    "Exception:\n%s\n"
+                    "Traceback:\n%s"
+                    "\n========== [MINDOFF EXCEPTION END: %s] ==========\n",
+                    code,
+                    exception,
+                    tb_text,
+                    code,
+                )
+        json_response_msg["status"] = _derive_status_from_http(response["http_status"])
+        json_response_msg["message"]["code"] = code
+        json_response_msg["message"]["title"] = response["title"]
+        json_response_msg["message"]["description"] = description
+        json_response_msg["message"]["category"] = category
+        json_response_msg["data"] = data or []
+        http_status = response["http_status"]
+
+        return Response(
+            json_response_msg,
+            status=http_status,
+        )
+
+    # -- 2. File response
+    def file_response(
+        self,
+        file_obj: Union[str, io.BytesIO],
+        *,
+        filename: str | None = None,
+        content_type: str | None = None,
+    ):
+        """
+        Return a file download response.
+        - file_obj can be a file path (str) or a BytesIO object.
+        - filename is optional; if not provided, a unique name will be generated.
+        - content_type is auto-detected from filename if not provided.
+        """
+        try:
+            if isinstance(file_obj, str):
+                guessed_type, _ = mimetypes.guess_type(file_obj)
+                response = FileResponse(
+                    open(file_obj, "rb"), content_type=content_type or guessed_type
+                )
+                filename = filename or file_obj.split("/")[-1]
+
+            elif isinstance(file_obj, io.BytesIO):
+                file_obj.seek(0)  # ensure pointer is at start
+                guessed_type, _ = mimetypes.guess_type(filename or "")
+                response = FileResponse(
+                    file_obj, content_type=content_type or guessed_type
+                )
+                if not filename:
+                    ext = (
+                        mimetypes.guess_extension(
+                            content_type or guessed_type or "application/octet-stream"
+                        )
+                        or ".bin"
+                    )
+                    filename = f"{uuid.uuid4().hex}{ext}"
+
+            else:
+                raise TypeError("file_obj must be a file path (str) or BytesIO")
+
+            if filename:
+                response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return MindoffResponseHandler().json_response(
+                code="UNEXPECTED_ERR", category="danger", data=[], exception=e
+            )
+
+    # -- 3. Text response
+    def text_response(
+        self,
+        text: str,
+        *,
+        status_code: int = 200,
+    ):
+        return HttpResponse(text, content_type="text/plain", status=status_code)
+
+    # -- 4. HTML response
+    def html_response(
+        self,
+        html: str,
+        *,
+        status_code: int = 200,
+    ):
+        return HttpResponse(html, content_type="text/html", status=status_code)
+
+
 # ----------------------------------
-# Main Functions
+# Functions
 # ----------------------------------
-# 1. Load responses from config/responses.csv into MINDOFF_RESPONSES dict.
 def load_responses_csv(csv_location=None):
     csv_path = csv_location or _get_csv_path()
+    # --- New Logic Start ---
+    if not os.path.exists(csv_path):
+        try:
+            from .managers import resources as resource_pkg
+
+            fallback_path = os.path.join(
+                os.path.dirname(resource_pkg.__file__), RESPONSES_FILE_NAME
+            )
+            if os.path.exists(fallback_path):
+                os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                shutil.copy2(fallback_path, csv_path)
+            else:
+                raise FileNotFoundError
+        except (ImportError, FileNotFoundError):
+            raise FileNotFoundError(
+                "no responses.csv found in config folder or django-mindoff resources folder. "
+                "Is django mindoff installed properly globally?"
+            )
     mo_validation_kit.ensure_path(path=csv_path, is_exception=True)
     with open(csv_path, newline="", encoding="utf-8") as csvfile:
         sample = csvfile.read(1024)
@@ -159,149 +275,16 @@ def load_responses_csv(csv_location=None):
     MINDOFF_RESPONSES.update(responses)
 
 
-# 2. Responses on demand.
-# -- 2.1. Json response
-@typechecked
-def json_response(
-    code: str = "",
-    category: CategoryOptions = "danger",
-    data: Union[Dict[str, Any], List[Dict[str, Any]]] = {},
-    exception: Exception | None = None,
-):
-    json_response_msg = default_json_response.copy()
-    if code not in MINDOFF_RESPONSES or code == "":
-        e = ValueError(f"Unknown Response code: '{code}'")
-        return json_response(
-            code="UNEXPECTED_ERR", category="danger", data=[], exception=e
-        )
-    response = MINDOFF_RESPONSES[code]
-    description = response["description"]
-    if exception is not None:
-        exception_name = exception.__class__.__name__
-        if exception is not None and exception.__traceback__ is not None:
-            tb_text = "".join(
-                traceback.format_exception(
-                    type(exception), exception, exception.__traceback__
-                )
-            )
-        else:
-            tb_text = mo_helper_kit.get_exact_traceback()
-        pretty_tb = textwrap.indent(tb_text, "    ")
-        if settings.DEBUG:
-            description = f"{description} | {exception_name}"
-            print(
-                f"\n========== [MINDOFF EXCEPTION START] ==========\n"
-                f"Exception: {exception}\n"
-                f"Traceback:\n{pretty_tb}\n"
-                f"========== [MINDOFF EXCEPTION END] ==========\n"
-            )
-        else:
-            logger.error(
-                "\n========== [MINDOFF EXCEPTION START: %s] ==========\n"
-                "Exception:\n%s\n"
-                "Traceback:\n%s"
-                "\n========== [MINDOFF EXCEPTION END: %s] ==========\n",
-                code,
-                exception,
-                tb_text,
-                code,
-            )
-    json_response_msg["status"] = _derive_status_from_http(response["http_status"])
-    json_response_msg["message"]["code"] = code
-    json_response_msg["message"]["title"] = response["title"]
-    json_response_msg["message"]["description"] = description
-    json_response_msg["message"]["category"] = category
-    json_response_msg["data"] = data or []
-    http_status = response["http_status"]
-
-    return Response(
-        json_response_msg,
-        status=http_status,
-    )
-
-
-# -- 2.2. File response
-def file_response(
-    file_obj: Union[str, io.BytesIO],
-    *,
-    filename: str | None = None,
-    content_type: str | None = None,
-):
-    """
-    Return a file download response.
-    - file_obj can be a file path (str) or a BytesIO object.
-    - filename is optional; if not provided, a unique name will be generated.
-    - content_type is auto-detected from filename if not provided.
-    """
-    try:
-        if isinstance(file_obj, str):
-            guessed_type, _ = mimetypes.guess_type(file_obj)
-            response = FileResponse(
-                open(file_obj, "rb"), content_type=content_type or guessed_type
-            )
-            filename = filename or file_obj.split("/")[-1]
-
-        elif isinstance(file_obj, io.BytesIO):
-            file_obj.seek(0)  # ensure pointer is at start
-            guessed_type, _ = mimetypes.guess_type(filename or "")
-            response = FileResponse(file_obj, content_type=content_type or guessed_type)
-            if not filename:
-                ext = (
-                    mimetypes.guess_extension(
-                        content_type or guessed_type or "application/octet-stream"
-                    )
-                    or ".bin"
-                )
-                filename = f"{uuid.uuid4().hex}{ext}"
-
-        else:
-            raise TypeError("file_obj must be a file path (str) or BytesIO")
-
-        if filename:
-            response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
-    except Exception as e:
-        return json_response(
-            code="UNEXPECTED_ERR", category="danger", data=[], exception=e
-        )
-
-
-# -- 2.3. Text response
-def text_response(
-    text: str,
-    *,
-    status_code: int = 200,
-):
-    return HttpResponse(text, content_type="text/plain", status=status_code)
-
-
-# -- 2.4. HTML response
-def html_response(
-    html: str,
-    *,
-    status_code: int = 200,
-):
-    return HttpResponse(html, content_type="text/html", status=status_code)
-
-
-mo_response_kit = SimpleNamespace(
-    json_response=json_response,
-    file_response=file_response,
-    text_response=text_response,
-    html_response=html_response,
-)
-
-
-# ----------------------------------
-# Supporting Functions
-# ----------------------------------
+# ----------------
+# Helper Functions
+# ----------------
 def _get_csv_path():
-    return Path(settings.BASE_DIR) / "config" / "responses.csv"
+    return Path(settings.BASE_DIR) / "config" / RESPONSES_FILE_NAME
 
 
 def _derive_status_from_http(status_code: int) -> str:
-    if status_code in STATUS_CODE_TO_STATUS:
-        return STATUS_CODE_TO_STATUS[status_code]
+    if status_code in CUSTOM_STATUS_CODE_TO_STATUS:
+        return CUSTOM_STATUS_CODE_TO_STATUS[status_code]
 
     if 200 <= status_code < 300:
         return "ok"
@@ -343,3 +326,9 @@ def _load_response_defaults(
     }
 
     return defaults
+
+
+# ----------------
+# Entry Point
+# ----------------
+mo_response_kit = MindoffResponseHandler()

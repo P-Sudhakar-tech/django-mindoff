@@ -27,7 +27,6 @@ redis_broker = RedisBroker(
     ],
 )
 dramatiq.set_broker(redis_broker)
-
 _COMPRESSED_RESPONSE_FLAG = "__compressed__"
 
 

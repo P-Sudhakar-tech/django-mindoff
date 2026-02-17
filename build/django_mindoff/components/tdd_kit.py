@@ -1,9 +1,3 @@
-# ==========================================================
-# 1. IMPORTS
-#     - Standard Library
-#     - Third-Party
-#     - Local Modules
-# ==========================================================
 import shutil
 import sys
 import secrets
@@ -34,20 +28,17 @@ from ..components.managers.create_app import DjangoAppCreator
 from django.urls import clear_url_caches
 
 
-# ==========================================================
-# 2. CONSTANTS
-# ==========================================================
+# ----------------
+# Constants
+# ----------------
 PASCAL_CASE_REGEX = r"^[A-Z][a-zA-Z0-9]+$"
 SNAKE_CASE_REGEX = r"^[a-z0-9_]+$"
 test_case = SimpleTestCase()
 
 
-# ==========================================================
-# 3. CLASSES
-#     3.1 Master Functions -- master_function_name
-#     3.2 Butler Functions -- _butler_function_name
-#     3.3 Helper Functions -- __helper_function_name
-# ==========================================================
+# ----------------
+# Classes
+# ----------------
 class MindoffTestCase:
     @pytest.fixture(autouse=True)
     def run(self, request):
@@ -147,7 +138,7 @@ urlpatterns = original_patterns + [
                 # Remove app modules - be thorough with all submodules
                 mods_to_remove = [
                     mod_name
-                    for mod_name in list(sys.modules.keys())
+                    for mod_name in (sys.modules.keys())
                     if (
                         mod_name == app_name
                         or mod_name.startswith(f"{app_name}.")
@@ -175,10 +166,8 @@ urlpatterns = original_patterns + [
 
     @pytest.fixture
     def _mo_mock_model(self, request):
-        """Temporary Django Model Creation Fixure."""
-        # ---- Setup ----
         created_models = []
-        auto_created_app = None  # Track if we auto-created an app
+        auto_created_app = None
 
         @typechecked
         def __setup(
@@ -190,62 +179,21 @@ urlpatterns = original_patterns + [
             fields: dict = {},
             base_model=models.Model,
         ):
-            nonlocal auto_created_app
-
             status, foreign_keys = _normalize_fk_and_validate_mockmodel_params(
                 model_name, table_name, foreign_keys
             )
             mo_validation_kit.ensure_truthy(status)
-
-            # Handle app_name resolution with fallback
-            if app_name:
-                app_name = _validate_or_generate_app_name(
-                    app_name=app_name, is_exists=True
-                )
-            else:
-                # Try to get current app name, fallback to auto-generation
-                try:
-                    app_name = mo_helper_kit.get_current_app_name()
-                except (ValueError, AttributeError, IndexError):
-                    # Auto-create a temp app if no app context is available
-                    if auto_created_app is None:
-                        # Create app only once per fixture scope
-                        app_name = _validate_or_generate_app_name(created_apps=[])
-
-                        # Create the temporary app structure
-                        temp_dir = Path(tempfile.mkdtemp())
-                        app_path = temp_dir / app_name
-                        app_path.mkdir(parents=True, exist_ok=True)
-                        (app_path / "__init__.py").write_text("")
-                        (app_path / "models.py").write_text(
-                            "from django.db import models\n"
-                        )
-
-                        sys.path.insert(0, str(temp_dir))
-                        new_installed = list(settings.INSTALLED_APPS) + [app_name]
-                        override = override_settings(INSTALLED_APPS=new_installed)
-                        override.enable()
-                        apps.set_installed_apps(new_installed)
-
-                        auto_created_app = {
-                            "name": app_name,
-                            "temp_dir": temp_dir,
-                            "override": override,
-                        }
-                    else:
-                        app_name = auto_created_app["name"]
-
+            nonlocal auto_created_app
+            resolved_app = _resolve_app_name(auto_created_app, app_name)
             model_name = _validate_or_generate_model_name(created_models, model_name)
-            if not table_name:
-                table_name = mo_helper_kit.pascal_to_snake(
-                    model_name.lower().removesuffix("model")
-                )
+            table_name = table_name or mo_helper_kit.pascal_to_snake(
+                model_name.lower().removesuffix("model")
+            )
             model_class = _create_model(
-                app_name, model_name, table_name, foreign_keys, fields, base_model
+                resolved_app, model_name, table_name, foreign_keys, fields, base_model
             )
             with connection.schema_editor() as editor:
-                table = model_class._meta.db_table
-                if table in connection.introspection.table_names():
+                if model_class._meta.db_table in connection.introspection.table_names():
                     editor.delete_model(model_class)
                 editor.create_model(model_class)
             created_models.append(model_class)
@@ -253,31 +201,12 @@ urlpatterns = original_patterns + [
             return model_class
 
         def __teardown():
-            nonlocal auto_created_app
-
-            # Delete models first
             if created_models:
                 with connection.schema_editor() as editor:
                     for model in created_models:
                         editor.delete_model(model)
-
-            # Clean up auto-created app if it exists
-            if auto_created_app is not None:
-                app_name = auto_created_app["name"]
-                temp_dir = auto_created_app["temp_dir"]
-                override = auto_created_app["override"]
-
-                apps.app_configs.pop(app_name, None)
-                apps.clear_cache()
-                sys.path[:] = [p for p in sys.path if p != str(temp_dir)]
-                sys_modules = list(sys.modules.keys())
-                for mod in sys_modules:
-                    if mod == app_name or mod.startswith(f"{app_name}."):
-                        sys.modules.pop(mod, None)
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                override.disable()
-                apps.clear_cache()
-                apps.populate(settings.INSTALLED_APPS)
+            if auto_created_app:
+                _cleanup_dynamic_app(auto_created_app)
 
         request.addfinalizer(__teardown)
         return __setup
@@ -287,21 +216,14 @@ urlpatterns = original_patterns + [
         original_base_dir = settings.BASE_DIR
 
         def __setup(addon_path=""):
-            # Create UUID folder without hyphens
             temp_base_dir = tmp_path / uuid.uuid4().hex
             temp_base_dir.mkdir()
-
-            # Create all directories in the relative path
             nested_dir = temp_base_dir / Path(addon_path)
             nested_dir.mkdir(parents=True, exist_ok=True)
-
-            # Patch settings.BASE_DIR
             settings.BASE_DIR = temp_base_dir
-
             return nested_dir
 
         def __teardown():
-            # Restore original BASE_DIR
             settings.BASE_DIR = original_base_dir
 
         request.addfinalizer(__teardown)
@@ -420,7 +342,6 @@ urlpatterns = original_patterns + [
             json_content_type_str = "application/json"
             plain_content_type_str = "text/plain"
             html_content_type_str = "text/html"
-
             method = custom_method if custom_method else api_cls_attr.method
             payload = custom_payload if custom_payload else api_cls_attr.payload_sample
             query_params = (
@@ -433,17 +354,13 @@ urlpatterns = original_patterns + [
                 if custom_url_kwargs
                 else api_cls_attr.url_kwargs_sample
             )
-
             url = reverse(api_url_name, kwargs=url_kwargs or {})
-
             if query_params:
                 from urllib.parse import urlencode
 
                 url = f"{url}?{urlencode(query_params)}"
-
             if user is not None:
                 self.client.force_authenticate(user=user)
-
             method = method.lower()
             client_method = getattr(self.client, method, None)
             mo_validation_kit.ensure_truthy(
@@ -451,8 +368,6 @@ urlpatterns = original_patterns + [
                 msg=f"Unsupported HTTP method: {method}",
                 is_exception=True,
             )
-
-            # base headers with sensible defaults
             final_headers = {"Accept": json_content_type_str}
             if headers:
                 final_headers.update(headers)
@@ -461,8 +376,6 @@ urlpatterns = original_patterns + [
                 and "Content-Type" not in final_headers
             ):
                 final_headers["Content-Type"] = json_content_type_str
-
-            # enforce method rules
             mo_validation_kit.ensure_in(
                 method, ["get", "post", "put", "delete"], is_exception=True
             )
@@ -473,7 +386,6 @@ urlpatterns = original_patterns + [
                     is_exception=True,
                 )
                 response = client_method(url, headers=final_headers, **extra)
-
             elif method in {"post", "put"}:
                 response = client_method(
                     url,
@@ -482,8 +394,6 @@ urlpatterns = original_patterns + [
                     headers=final_headers,
                     **extra,
                 )
-
-            # parse Response
             content_type = response.headers.get("Content-Type", "").lower()
             if json_content_type_str in content_type:
                 return response.json()
@@ -507,7 +417,6 @@ urlpatterns = original_patterns + [
         ):
             api_cls_attr = _get_api_cls_attributes(api_url_name)
             response_type = getattr(api_cls_attr, "response_type", "json").lower()
-
             assert response is not None, f"[{api_url_name}] API returned no response"
             assert response.status_code == expected_status_code, (
                 f"[{api_url_name}] Expected HTTP {expected_status_code}, "
@@ -610,7 +519,6 @@ urlpatterns = original_patterns + [
                 assert (
                     "text/plain" in content_type
                 ), f"[{api_url_name}] Expected plain text response, got Content-Type={content_type}"
-
                 text = content.decode(errors="ignore")
                 assert isinstance(
                     text, str
@@ -625,18 +533,9 @@ urlpatterns = original_patterns + [
         return __assert_api_response_by_name
 
 
-# ==========================================================
-# 4. MAIN FUNCTIONS
-# ==========================================================
-# Add Main Functions Below
-
-
-# ==========================================================
-# 5. HELPER FUNCTIONS
-# ==========================================================
-# Add Helper Functions Below
-
-
+# ----------------
+# Helper Functions
+# ----------------
 def _normalize_fk_and_validate_mockmodel_params(model_name, table_name, foreign_keys):
     if model_name:
         test_case.assertRegex(model_name, PASCAL_CASE_REGEX, msg="Invalid Model Name")
@@ -660,6 +559,57 @@ def _normalize_fk_and_validate_mockmodel_params(model_name, table_name, foreign_
     return True, foreign_keys
 
 
+def _ensure_dynamic_app():
+    app_name = _validate_or_generate_app_name(created_apps=[])
+    temp_dir = Path(tempfile.mkdtemp())
+    app_path = temp_dir / app_name
+    app_path.mkdir(parents=True, exist_ok=True)
+    (app_path / "__init__.py").write_text("")
+    (app_path / "models.py").write_text("from django.db import models\n")
+
+    sys.path.insert(0, str(temp_dir))
+    new_installed = list(settings.INSTALLED_APPS) + [app_name]
+    override = override_settings(INSTALLED_APPS=new_installed)
+    override.enable()
+    apps.set_installed_apps(new_installed)
+
+    return {
+        "name": app_name,
+        "temp_dir": temp_dir,
+        "override": override,
+    }
+
+
+def _resolve_app_name(auto_created_app, provided_name: str | None) -> str:
+    """Handles the logic for identifying which Django app to use."""
+    if provided_name:
+        return _validate_or_generate_app_name(app_name=provided_name, is_exists=True)
+
+    try:
+        return mo_helper_kit.get_current_app_name()
+    except (ValueError, AttributeError, IndexError):
+        if not auto_created_app:
+            auto_created_app = _ensure_dynamic_app()
+        return auto_created_app["name"]
+
+
+def _cleanup_dynamic_app(app_data):
+    name, temp_dir, override = (
+        app_data["name"],
+        app_data["temp_dir"],
+        app_data["override"],
+    )
+    apps.app_configs.pop(name, None)
+    sys.path[:] = [p for p in sys.path if p != str(temp_dir)]
+    for mod in sys.modules.keys():
+        if mod == name or mod.startswith(f"{name}."):
+            sys.modules.pop(mod, None)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    override.disable()
+    apps.clear_cache()
+    apps.populate(settings.INSTALLED_APPS)
+
+
 def _create_model(
     app_name: str,
     model_name: str,
@@ -669,16 +619,16 @@ def _create_model(
     base_model=models.Model,
 ):
     model_fields = {
-        f"id": models.UUIDField(
+        "id": models.UUIDField(
             primary_key=True,
             default=uuid.uuid4,
             editable=False,
-            db_column=f"id",  # "{table_name}_id"
+            db_column="id",
         ),
         "__module__": __name__,
     }
     for main_app_name, main_model_name, option in foreign_keys:
-        fk_name = main_model_name.lower().removesuffix("model")
+        fk_name = f"{main_model_name.lower().removesuffix('model')}_ref"
         try:
             main_model_class = apps.get_model(main_app_name, main_model_name)
         except LookupError:
@@ -745,8 +695,6 @@ def _validate_or_generate_model_name(
 def _validate_model(model_class):
     test_case.assertTrue(hasattr(model_class, "_meta"))
     test_case.assertTrue(model_class._meta.db_table)
-
-    # Check model fields exist and have proper types
     fields = {f.name: f for f in model_class._meta.concrete_fields}
     pk_name = model_class._meta.pk.name
     test_case.assertIn(pk_name, fields)
@@ -762,7 +710,6 @@ def _validate_model(model_class):
 
 
 def _obj_to_dict(obj, is_fk_as_id):
-    """Convert a Django model instance to dict, optionally replacing FK fields with PKs."""
     result = {}
     for field in obj._meta.fields:
         val = getattr(obj, field.name)
@@ -777,21 +724,16 @@ def _generate_model_factory_objects(
     idx, model, models, baked_objects_per_model, counts, is_uuid_hex
 ):
     n_per_parent = counts[idx]
-
-    # Map FK fields to previously baked models
     fk_fields_map = {
         f.name: baked_objects_per_model[i]
         for i, m in enumerate(models[:idx])
         for f in model._meta.fields
         if getattr(f, "related_model", None) is m
     }
-
     objs = []
-
-    if not fk_fields_map:  # top-level
+    if not fk_fields_map:
         baked = _prepare_with_constraints(model, is_uuid_hex, quantity=n_per_parent)
         return baked if isinstance(baked, list) else [baked]
-
     immediate_parent_name, immediate_parent_objs = list(fk_fields_map.items())[-1]
     for parent_obj in immediate_parent_objs:
         fk_kwargs = {immediate_parent_name: parent_obj}
@@ -807,17 +749,14 @@ def _generate_model_factory_objects(
                 model, is_uuid_hex, quantity=n_per_parent, **fk_kwargs
             )
         )
-
     return objs
 
 
 def _prepare_with_constraints(model, is_uuid_hex, quantity=1, **fk_kwargs):
     objs = []
     used_uniques = {}
-
     for _ in range(quantity):
         kwargs = dict(fk_kwargs)
-
         for field in model._meta.fields:
             if field.name in kwargs:
                 continue
@@ -826,9 +765,7 @@ def _prepare_with_constraints(model, is_uuid_hex, quantity=1, **fk_kwargs):
             )
             if value is not None:
                 kwargs[field.name] = value
-
         objs.append(baker.prepare(model, **kwargs))
-
     return objs
 
 
@@ -842,7 +779,6 @@ def _apply_exclude_columns(idx, df, exclude_columns: List[List[str]]):
                 f"at index {idx}. Available columns: {list(df.columns)}"
             )
         return df.drop(cols)
-
     return df
 
 
@@ -879,24 +815,13 @@ def _apply_modify(idx, df, modify: List[dict]):
 
 def _get_api_cls_attributes(api_url_name: str):
     resolver = get_resolver()
-
     for pattern in resolver.url_patterns:
         if getattr(pattern, "name", None) != api_url_name:
             continue
-
         callback = pattern.callback
-
-        # Class-based view (as_view)
         if hasattr(callback, "view_class"):
             return callback.view_class
-
         raise ImproperlyConfigured(
             f"URL '{api_url_name}' does not resolve to a class-based API view"
         )
-
     raise LookupError(f"API URL name not found: {api_url_name}")
-
-
-# ==========================================================
-# 6. SCRIPT ENTRYPOINT
-# ==========================================================

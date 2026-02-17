@@ -9,7 +9,11 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 from ..polars_kit import mo_polars_kit
+from django.conf import settings
 
+# ----------------
+# Constants
+# ----------------
 DJANGO_TO_POLARS_TYPE_MAP = {
     "AutoField": pl.Int64,
     "BigAutoField": pl.Int64,
@@ -41,9 +45,12 @@ DJANGO_TO_POLARS_TYPE_MAP = {
     "OneToOneField": pl.Utf8,
     "ManyToManyField": pl.List(pl.Utf8),
 }
-ERROR_COL = "__error__info"
+ERROR_COL = getattr(settings, "POLARS_VALIDATOR_ERROR_COL", None) or "__error__info"
 
 
+# ----------------
+# Classes
+# ----------------
 class RowValidator:
     def __init__(
         self,
@@ -617,7 +624,7 @@ class RowValidator:
                 value = str(value)
             return value
 
-        mode = "map" if callable(default) else "lit"
+        mode = "sink_map" if callable(default) else "lit"
         return mo_polars_kit.frm_fill_null(
             df, column=field_name, fill_value=__apply_default, mode=mode
         )

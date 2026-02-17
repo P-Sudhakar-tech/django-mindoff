@@ -4,10 +4,17 @@ from django.db.models.fields.related import ForeignKey, OneToOneField
 
 from ..polars_kit import mo_polars_kit
 from ..validation_kit import mo_validation_kit
+from django.conf import settings
 
-ERROR_COL = "__error__info"
+# ----------------
+# Constants
+# ----------------
+ERROR_COL = getattr(settings, "POLARS_VALIDATOR_ERROR_COL", None) or "__error__info"
 
 
+# ----------------
+# Classes
+# ----------------
 class ForeignKeyValidator:
     def __init__(self, df_dict: dict[type[models.Model], pl.DataFrame | pl.LazyFrame]):
         self.df_dict = df_dict

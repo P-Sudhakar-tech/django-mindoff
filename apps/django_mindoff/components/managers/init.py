@@ -139,18 +139,19 @@ class DjangoProjectCreator:
         updated = self._append_to_list(
             updated, "INSTALLED_APPS", "rest_framework.authtoken"
         )
-        if "TEMPLATES = [" in updated:
-            updated = re.sub(
-                r"('DIRS':\s*)\[\s*\]",
-                r"\1[os.path.join(BASE_DIR, 'templates')]",
-                updated,
-            )
+        updated = self._append_to_list(updated, "INSTALLED_APPS", "django_mindoff")
+        if "TEMPLATES" in updated:
             if "import os" not in updated:
                 updated = updated.replace(
-                    "from pathlib import Path", "import os\nfrom pathlib import Path"
+                    "from pathlib import Path",
+                    "import os\nfrom pathlib import Path",
                 )
+            updated = re.sub(
+                r'"DIRS"\s*:\s*\[[^\]]*\]',
+                '"DIRS": [os.path.join(BASE_DIR, "templates")]',
+                updated,
+            )
         mindoff_header = "# ===== MINDOFF SPECIFIC SETTINGS OPTIONS ====="
-
         if mindoff_header not in updated:
             updated += f"""
 {mindoff_header}

@@ -4,6 +4,9 @@ import polars as pl
 from django.db import models
 
 
+# ----------------
+# Classes
+# ----------------
 class ColumnValidator:
     def __init__(
         self,

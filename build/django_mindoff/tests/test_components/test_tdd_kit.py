@@ -201,20 +201,19 @@ class TestMockModel(MindoffTestCase):
     def test_foreign_key_addon(self):
         """
         3. **Foreign Key Addon:** Link Multiple Existing Model Names → Add multiple FK fields
-        and db_columns Should match the db_columns of corresponding model’s primary key
-        - Link one of the Foreign key to Other Auto Temporary Model from another app
-        - Link one of the Foreign key to Other Defined Temporary Model from another app
-        - Link one of the Foreign key to Other Permanent Model from same app
-        - Link one of the Foreign key to Other Permanent Model from another app
+        - Primary Key db_column should be 'id'
+        - Foreign Key db_columns should follow the '{field_name}_ref' convention
         """
         self.mo_mock_app(app_name="temp_otherapp")
         self.mo_mock_app(app_name="temp_app")
+
         temp_other_auto = self.mo_mock_model(app_name="temp_otherapp")
         temp_other_defined = self.mo_mock_model(
             app_name="temp_app", model_name="DefinedOtherModel"
         )
         perm_same_app = apps.get_model("auth", "User")
         perm_other_app = apps.get_model("contenttypes", "ContentType")
+
         model = self.mo_mock_model(
             foreign_keys=[
                 (temp_other_auto._meta.app_label, temp_other_auto.__name__),
@@ -223,12 +222,16 @@ class TestMockModel(MindoffTestCase):
                 (perm_other_app._meta.app_label, perm_other_app.__name__),
             ]
         )
+
         fk_fields = [
             f for f in model._meta.concrete_fields if isinstance(f, models.ForeignKey)
         ]
+
         self.asserts.assertEqual(
             len(fk_fields), 4, msg="Not All Foreign key fields are created"
         )
+
+        # Validate the models are correctly linked
         linked_models = {fk.related_model for fk in fk_fields}
         expected_models = {
             temp_other_auto,
@@ -239,21 +242,30 @@ class TestMockModel(MindoffTestCase):
         self.asserts.assertEqual(
             linked_models, expected_models, msg="Foreign key model not matching"
         )
-        temp_app_prefixes = "temp_"
+
+        # --- NEW CONVENTION ASSERTIONS ---
         for fk in fk_fields:
+            # 1. Verify the FK column ends with _ref
+            actual_db_column = fk.db_column or fk.get_attname_column()[1]
+            self.asserts.assertTrue(
+                actual_db_column.endswith("_ref_id"),
+                msg=f"FK column '{actual_db_column}' does not follow the _ref suffix convention.",
+            )
+
+            # 2. Verify it DOES NOT match the target's PK name (which is 'id')
             related_model = fk.related_model
-            if related_model._meta.app_label.startswith(temp_app_prefixes):
-                pk_field = related_model._meta.pk
-                expected_db_column = pk_field.db_column or pk_field.attname
-                actual_db_column = fk.db_column or fk.attname
-                self.asserts.assertEqual(
-                    actual_db_column,
-                    expected_db_column,
-                    msg=(
-                        f"Mismatch in db_column for FK '{fk.name}': "
-                        f"expected '{expected_db_column}', found '{actual_db_column}'."
-                    ),
-                )
+            pk_field = related_model._meta.pk
+            target_pk_column = pk_field.db_column or pk_field.attname
+
+            # In your new approach, target_pk_column is 'id', but actual_db_column is 'something_fk'
+            self.asserts.assertNotEqual(
+                actual_db_column,
+                target_pk_column,
+                msg=f"FK '{fk.name}' matches target PK name. Should be separate names now.",
+            )
+
+        # Verify the Primary Key of the model itself is just 'id'
+        self.asserts.assertEqual(model._meta.pk.db_column, "id")
         self._common_assertions(model)
 
     def test_fields_addon_single_and_multiple(self):

@@ -17,6 +17,9 @@ from ..polars_kit import mo_polars_kit
 from ..response_kit import mo_validation_kit
 
 
+# ----------------
+# Classes
+# ----------------
 @typechecked
 class CRUDProcessor:
     def __init__(
@@ -89,16 +92,12 @@ class CRUDProcessor:
                     is_exception=True,
                 )
                 if isinstance(df, pl.LazyFrame):
-                    total_rows = mo_polars_kit.get_frm_height(df)
-                    for offset in range(0, total_rows, batch_size):
-                        df.slice(offset, batch_size).collect(
-                            engine="streaming"
-                        ).write_database(
-                            table_name=table_name,
-                            connection=conn,
-                            if_table_exists="append",
-                            engine="sqlalchemy",
-                        )
+                    df.collect(engine="streaming").write_database(
+                        table_name=table_name,
+                        connection=conn,
+                        if_table_exists="append",
+                        engine="sqlalchemy",
+                    )
                 else:
                     df.write_database(
                         table_name=table_name,
@@ -132,29 +131,15 @@ class CRUDProcessor:
                 pk_col = quoted_name(pk_field, quote=True)
                 temp_table_name = f"temp_upsert_{uuid.uuid4().hex}"
 
-                if isinstance(df, pl.LazyFrame):
-                    total_rows = mo_polars_kit.get_frm_height(df)
-                    for offset in range(0, total_rows, batch_size):
-                        batch = df.slice(offset, batch_size).collect(engine="streaming")
-                        self._update__df_insert(
-                            batch,
-                            is_temp_table=is_temp_table,
-                            temp_table_name=temp_table_name,
-                            table=table,
-                            pk_field=pk_field,
-                            pk_col=pk_col,
-                            conn=conn,
-                        )
-                else:
-                    self._update__df_insert(
-                        df,
-                        is_temp_table=is_temp_table,
-                        temp_table_name=temp_table_name,
-                        table=table,
-                        pk_field=pk_field,
-                        pk_col=pk_col,
-                        conn=conn,
-                    )
+                self._update__df_insert(
+                    df,
+                    is_temp_table=is_temp_table,
+                    temp_table_name=temp_table_name,
+                    table=table,
+                    pk_field=pk_field,
+                    pk_col=pk_col,
+                    conn=conn,
+                )
 
                 if is_temp_table:
                     self._update__merge_staging(
@@ -167,7 +152,7 @@ class CRUDProcessor:
 
     def _update__df_insert(
         self,
-        df: pl.DataFrame,
+        df: pl.DataFrame | pl.LazyFrame,
         *,
         is_temp_table: bool,
         temp_table_name: str,
@@ -177,14 +162,25 @@ class CRUDProcessor:
         conn,
     ) -> None:
         if is_temp_table:
-            df.write_database(
-                table_name=temp_table_name,
-                connection=conn,
-                if_table_exists="append",
-                engine="sqlalchemy",
-            )
+            if isinstance(df, pl.LazyFrame):
+                df.collect(engine="streaming").write_database(
+                    table_name=temp_table_name,
+                    connection=conn,
+                    if_table_exists="append",
+                    engine="sqlalchemy",
+                )
+            else:
+                df.write_database(
+                    table_name=temp_table_name,
+                    connection=conn,
+                    if_table_exists="append",
+                    engine="sqlalchemy",
+                )
         else:
-            df_rows = df.to_arrow().to_pylist()
+            if isinstance(df, pl.LazyFrame):
+                df_rows = df.collect(engine="streaming").to_arrow().to_pylist()
+            else:
+                df_rows = df.to_arrow().to_pylist()
             if self.dialect == "postgresql":
                 insert_stmt = table.insert().values(df_rows)
                 update_cols = {
