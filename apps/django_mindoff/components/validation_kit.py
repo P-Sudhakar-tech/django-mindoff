@@ -1,13 +1,3 @@
-# ----------------------------------
-# validation_kit.py
-# ----------------------------------
-"""
-USAGE:
-mo_validation_kit.ensure_equal(a, b, msg="optional")
-mo_validation_kit.ensure_equal(a, b, is_exception=False)
-mo_validation_kit.ensure_equal(a, b, is_aggregate=True)
-"""
-
 from __future__ import annotations
 
 import math
@@ -18,6 +8,9 @@ from typing import Any, Callable, Dict, List, Optional, Union, Literal
 from .helper_kit import mo_helper_kit
 
 
+# ----------------
+# Classes
+# ----------------
 class MindoffValidationError(Exception):
     def __init__(
         self,
@@ -45,7 +38,6 @@ class MindoffValidator:
         self._errors: List[_ErrorItem] = []
 
     # Equality & Comparison
-
     def ensure_equal(
         self,
         left: Any,
@@ -825,8 +817,6 @@ class MindoffValidator:
             code=code,
         )
 
-    # ensure
-
     def ensure(
         self,
         check: Union[bool, Callable[[], bool]],
@@ -902,7 +892,6 @@ class MindoffValidator:
     def reset(self):
         self._errors.clear()
 
-    # ---- internals ----
     def _record_or_raise(
         self,
         *,
@@ -916,7 +905,6 @@ class MindoffValidator:
         code: str = "VALIDATION_ERR",
     ):
         context = context or {}
-
         if ok:
             return True
 
@@ -950,6 +938,9 @@ class MindoffValidator:
         )
 
 
+# ----------------
+# Helper Classes
+# ----------------
 @dataclass
 class _ErrorItem:
     fn: str
@@ -960,4 +951,7 @@ class _ErrorItem:
     code: str = "VALIDATION_ERR"
 
 
+# ----------------
+# Entry Point
+# ----------------
 mo_validation_kit = MindoffValidator()

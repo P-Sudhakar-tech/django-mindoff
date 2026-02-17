@@ -130,3 +130,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MINDOFF_LOG_ERRORS_IN_DEBUG = False
 MINDOFF_TRACEBACK_DIRS = ["apps", "config"]
 REDIS_URL = config("REDIS_URL")
+POLARS_VALIDATOR_ERROR_COL = "__error__info"

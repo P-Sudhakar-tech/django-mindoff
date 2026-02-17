@@ -17,6 +17,9 @@ from ..polars_kit import mo_polars_kit
 from ..response_kit import mo_validation_kit
 
 
+# ----------------
+# Classes
+# ----------------
 @typechecked
 class CRUDProcessor:
     def __init__(

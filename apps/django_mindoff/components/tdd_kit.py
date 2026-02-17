@@ -1,9 +1,3 @@
-# ==========================================================
-# 1. IMPORTS
-#     - Standard Library
-#     - Third-Party
-#     - Local Modules
-# ==========================================================
 import shutil
 import sys
 import secrets
@@ -34,20 +28,17 @@ from ..components.managers.create_app import DjangoAppCreator
 from django.urls import clear_url_caches
 
 
-# ==========================================================
-# 2. CONSTANTS
-# ==========================================================
+# ----------------
+# Constants
+# ----------------
 PASCAL_CASE_REGEX = r"^[A-Z][a-zA-Z0-9]+$"
 SNAKE_CASE_REGEX = r"^[a-z0-9_]+$"
 test_case = SimpleTestCase()
 
 
-# ==========================================================
-# 3. CLASSES
-#     3.1 Master Functions -- master_function_name
-#     3.2 Butler Functions -- _butler_function_name
-#     3.3 Helper Functions -- __helper_function_name
-# ==========================================================
+# ----------------
+# Classes
+# ----------------
 class MindoffTestCase:
     @pytest.fixture(autouse=True)
     def run(self, request):
@@ -542,15 +533,9 @@ urlpatterns = original_patterns + [
         return __assert_api_response_by_name
 
 
-# ==========================================================
-# 4. MAIN FUNCTIONS
-# ==========================================================
-# Add Main Functions Below
-
-
-# ==========================================================
-# 5. HELPER FUNCTIONS
-# ==========================================================
+# ----------------
+# Helper Functions
+# ----------------
 def _normalize_fk_and_validate_mockmodel_params(model_name, table_name, foreign_keys):
     if model_name:
         test_case.assertRegex(model_name, PASCAL_CASE_REGEX, msg="Invalid Model Name")
@@ -840,8 +825,3 @@ def _get_api_cls_attributes(api_url_name: str):
             f"URL '{api_url_name}' does not resolve to a class-based API view"
         )
     raise LookupError(f"API URL name not found: {api_url_name}")
-
-
-# ==========================================================
-# 6. SCRIPT ENTRYPOINT
-# ==========================================================

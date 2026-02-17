@@ -22,7 +22,9 @@ from rest_framework.exceptions import (
     Throttled,
 )
 
-
+# ----------------
+# Constants
+# ----------------
 ALLOWED_METHODS = ["get", "post", "put", "delete"]
 ALLOWED_PROCESS_MODES = ["direct", "queue"]
 ALLOWED_RESPONSE_TYPES = [
@@ -35,57 +37,9 @@ ALLOWED_RESPONSE_TYPES = [
 ]
 
 
-def api_guardian(func):
-    @wraps(func)
-    def wrapper(request, *args, **kwargs):
-        try:
-            return func(request, *args, **kwargs)
-        except MindoffValidationError as exc:
-            return mo_response_kit.json_response(
-                code=exc.code,
-                category=exc.category,
-                **exc.data,
-            )
-        except Exception as exc:
-            if isinstance(exc, MindoffValidationError):
-                return mo_response_kit.json_response(
-                    code=exc.code,
-                    category=exc.category,
-                    data=exc.data,
-                )
-            if isinstance(exc, NotAuthenticated):
-                return mo_response_kit.json_response(
-                    code="NOT_AUTHENTICATED",
-                    category="danger",
-                )
-            if isinstance(exc, AuthenticationFailed):
-                return mo_response_kit.json_response(
-                    code="AUTHENTICATION_FAILED",
-                    category="danger",
-                )
-
-            if isinstance(exc, PermissionDenied):
-                return mo_response_kit.json_response(
-                    code="PERMISSION_DENIED",
-                    category="danger",
-                )
-
-            if isinstance(exc, Throttled):
-                return mo_response_kit.json_response(
-                    code="RATE_LIMITED",
-                    category="warning",
-                )
-            return mo_response_kit.json_response(
-                code="UNEXPECTED_ERR",
-                category="danger",
-                data=[],
-                exception=exc,
-            )
-
-    return wrapper
-
-
-# [API KIT] SECTION 2. THE API REPRESENTATIVE
+# ----------------
+# Classes
+# ----------------
 class MindoffAPIMixin(APIView):
     # 1. API Identity
     api_url_name: str = ""
@@ -492,6 +446,62 @@ class MindoffAPIMixin(APIView):
         )
 
 
+# ----------------
+# Functions
+# ----------------
+def api_guardian(func):
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        try:
+            return func(request, *args, **kwargs)
+        except MindoffValidationError as exc:
+            return mo_response_kit.json_response(
+                code=exc.code,
+                category=exc.category,
+                **exc.data,
+            )
+        except Exception as exc:
+            if isinstance(exc, MindoffValidationError):
+                return mo_response_kit.json_response(
+                    code=exc.code,
+                    category=exc.category,
+                    data=exc.data,
+                )
+            if isinstance(exc, NotAuthenticated):
+                return mo_response_kit.json_response(
+                    code="NOT_AUTHENTICATED",
+                    category="danger",
+                )
+            if isinstance(exc, AuthenticationFailed):
+                return mo_response_kit.json_response(
+                    code="AUTHENTICATION_FAILED",
+                    category="danger",
+                )
+
+            if isinstance(exc, PermissionDenied):
+                return mo_response_kit.json_response(
+                    code="PERMISSION_DENIED",
+                    category="danger",
+                )
+
+            if isinstance(exc, Throttled):
+                return mo_response_kit.json_response(
+                    code="RATE_LIMITED",
+                    category="warning",
+                )
+            return mo_response_kit.json_response(
+                code="UNEXPECTED_ERR",
+                category="danger",
+                data=[],
+                exception=exc,
+            )
+
+    return wrapper
+
+
+# ----------------
+# Entry Point
+# ----------------
 mo_api_kit = SimpleNamespace(
     api_guardian=api_guardian,
     MindoffAPIMixin=MindoffAPIMixin,

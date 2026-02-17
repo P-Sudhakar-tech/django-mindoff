@@ -41,7 +41,7 @@ def has_nulls_in_frm_col(frm: pl.DataFrame | pl.LazyFrame, column: str) -> bool:
 
 
 @typechecked
-def split_model_frms_on_column(
+def split_model_frms_on_null(
     df_dict: dict[type[models.Model], pl.DataFrame | pl.LazyFrame],
     column: str = "__error__info",
 ) -> tuple[
@@ -221,7 +221,7 @@ mo_polars_kit = SimpleNamespace(
     is_model_frms_empty=is_model_frms_empty,
     is_model_frms_not_empty=is_model_frms_not_empty,
     has_nulls_in_frm_col=has_nulls_in_frm_col,
-    split_model_frms_on_column=split_model_frms_on_column,
+    split_model_frms_on_null=split_model_frms_on_null,
     frm_fill_null=frm_fill_null,
     frm_fill_notnull=frm_fill_notnull,
     get_frm_height=get_frm_height,

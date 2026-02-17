@@ -1,13 +1,15 @@
 from typing import Any, Dict, List, Union, get_args, get_origin, Literal
 from ..validation_kit import mo_validation_kit
 
-
+# ----------------
+# Constants
+# ----------------
 MAX_LIST_VARIANTS = 1
 
 
-# ------------------------
-# Main Function
-# ------------------------
+# ----------------
+# Functions
+# ----------------
 def validate_schema(
     data: Any,
     schema: Any,
@@ -41,7 +43,7 @@ def validate_schema(
 
 
 # ------------------------
-# First-level Handlers (with inlined logic)
+# Helper Functions
 # ------------------------
 def _get_handler(sch, origin):
     if isinstance(sch, type):

@@ -6,7 +6,9 @@ import tempfile
 from pathlib import Path
 
 
-# ======== MAIN FUNCTION =======
+# ----------------
+# Functions
+# ----------------
 def file_guardian(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -80,7 +82,9 @@ def file_guardian(func):
     return wrapper
 
 
-# ======== SUB FUNCTIONS =======
+# ----------------
+# Helper Functions
+# ----------------
 def _sha256sum(file_path):
     h = hashlib.sha256()
     with open(file_path, "rb") as f:

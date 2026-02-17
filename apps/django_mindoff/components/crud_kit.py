@@ -1,10 +1,3 @@
-"""
-1. mo_crud_kit.create(model_frm_dict, is_partial)
-2. mo_crud_kit.update(model_frm_dict, is_partial)
-3. mo_crud_kit.delete(list_of_ids, is_partial)
-4. mo_crud_kit.read(model, filter_conditions, columns, is_streaming)
-"""
-
 import warnings
 from itertools import islice
 from types import SimpleNamespace
@@ -24,14 +17,227 @@ from .validation_kit import mo_validation_kit, MindoffValidationError
 from django.db.models import F
 from django.db.models.functions import Cast
 from django.db.models import CharField
+from django.conf import settings
 
-ERROR_COL = "__error__info"
+# ----------------
+# Constants
+# ----------------
+ERROR_COL = getattr(settings, "POLARS_VALIDATOR_ERROR_COL", None) or "__error__info"
 
 
 # --------------
 # Classes
 # --------------
-@typechecked
+class MindoffCRUDHandler:
+    """
+    ⚠️ INTERNAL CLASS
+    Handles the actual database operations for create/update based on validated DataFrames.
+    """
+
+    @typechecked
+    def create(
+        self,
+        model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+        *,
+        is_partial: bool = False,
+        is_validate: bool = True,
+        batch_size: int = 1000,
+    ) -> Tuple[str, Dict, Dict]:
+        model_frms = mo_polars_kit.sync_model_frms_type(model_frms)
+        if is_validate:
+            # Step 1: Column validation
+            column_validator = ColumnValidator(
+                model_frms=model_frms,
+                is_remove_extra_columns=True,
+                is_add_missing_columns=True,
+            )
+            valid_model_frms, invalid_model_frms = column_validator.run()
+            if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+                return "fail", valid_model_frms, invalid_model_frms
+
+            # Step 2: Row validation
+            row_validator = RowValidator(valid_model_frms)
+            row_validated_frms = row_validator.run()
+
+            # Step 3: Foreign key validation
+            fk_validator = ForeignKeyValidator(row_validated_frms)
+            fk_validated_frms = fk_validator.validate()
+            frm_dict_valid_invalid_splitter = _ModelFrmsValidInvalidSplitter(
+                fk_validated_frms
+            )
+            valid_model_frms, invalid_model_frms = frm_dict_valid_invalid_splitter.run()
+
+            # Step 4: Decide partial save
+            if mo_polars_kit.is_model_frms_empty(valid_model_frms):
+                return "fail", valid_model_frms, invalid_model_frms
+            if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+                if not is_partial:
+                    return "fail", valid_model_frms, invalid_model_frms
+                status = "partial_ok"
+            else:
+                status = "ok"
+        else:
+            warnings.warn(
+                "Saving without validation may store unsafe or inconsistent data, "
+                "which can affect further read/update/delete functions. "
+                "Proceed only if intentional.",
+                RuntimeWarning,
+            )
+            status = "ok"
+            valid_model_frms, invalid_model_frms = model_frms, {}
+
+        # Step 5: Perform CRUD operation
+        crud_processor = CRUDProcessor(valid_model_frms)
+        _ = crud_processor.create(batch_size=batch_size)
+        return status, valid_model_frms, invalid_model_frms
+
+    @typechecked
+    def read(
+        self,
+        qs: models.QuerySet,
+        *,
+        page_number: int | None = None,
+        is_lazy: bool = False,
+        batch_size: int = 0,
+    ) -> tuple[pl.DataFrame | pl.LazyFrame, dict[str, Any]]:
+        # 1. Validate and Normalize
+        mo_validation_kit.ensure(
+            issubclass(qs._iterable_class, models.query.ValuesIterable),
+            msg=f"Unsupported queryset type `{qs._iterable_class.__name__}`. "
+            "You must call `.values()` on the queryset before passing it to `read()`.",
+            is_exception=True,
+        )
+        mo_validation_kit.ensure_greater_equal(
+            batch_size,
+            0,
+            msg=f"The 'batch_size' parameter must be a positive integer. Provided value: {batch_size}",
+            is_exception=True,
+        )
+        if batch_size == 0:
+            batch_size = 100 if page_number else 1000
+
+        # 2. Empty Queryset
+        if not qs.exists():
+            frm = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
+            stats = _read__build_stats(
+                mode="pagination" if page_number else "streaming",
+                batch_size=batch_size,
+                total_count=0,
+                total_pages=0,
+                current_page=page_number if page_number else 0,
+                has_next=False,
+                has_previous=False,
+            )
+            return frm, stats
+
+        # 3. Streaming mode
+        if not page_number:
+            frm = pl.concat(
+                _read__batched_iterator(qs, batch_size, is_lazy), rechunk=False
+            )
+            stats = _read__build_stats(
+                mode="streaming",
+                batch_size=batch_size,
+                total_count=qs.count(),
+                total_pages=0,
+                current_page=0,
+                has_next=False,
+                has_previous=False,
+            )
+            return frm, stats
+
+        # 4. Pagination mode
+        paginator = Paginator(qs, batch_size)
+        try:
+            page = paginator.page(page_number)
+            frm = (
+                pl.DataFrame(list(page)).lazy() if is_lazy else pl.DataFrame(list(page))
+            )
+            stats = _read__build_stats(
+                mode="pagination",
+                batch_size=batch_size,
+                total_count=paginator.count,
+                total_pages=paginator.num_pages,
+                current_page=page.number,
+                has_next=page.has_next(),
+                has_previous=page.has_previous(),
+            )
+        except EmptyPage:
+            frm = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
+            stats = _read__build_stats(
+                mode="pagination",
+                batch_size=batch_size,
+                total_count=paginator.count,
+                total_pages=paginator.num_pages,
+                current_page=page_number,
+                has_next=False,
+                has_previous=page_number > 1,
+            )
+
+        return frm, stats
+
+    @typechecked
+    def update(
+        self,
+        model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
+        *,
+        is_partial: bool = False,
+        is_validate: bool = True,
+        batch_size: int = 1000,
+        is_temp_table: bool = True,
+    ):
+        model_frms = _update__fill_missing_columns(model_frms, batch_size=batch_size)
+        if is_validate:
+            # Step 1: Column validation
+            column_validator = ColumnValidator(
+                model_frms=model_frms,
+                is_remove_extra_columns=True,
+                is_add_missing_columns=True,
+            )
+            valid_model_frms, invalid_model_frms = column_validator.run()
+            if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+                return "fail", valid_model_frms, invalid_model_frms
+
+            # Step 2: Row validation
+            row_validator = RowValidator(valid_model_frms)
+            row_validated_frms = row_validator.run()
+
+            # Step 3: Foreign key validation
+            fk_validator = ForeignKeyValidator(row_validated_frms)
+            fk_validated_frms = fk_validator.validate()
+            frm_dict_valid_invalid_splitter = _ModelFrmsValidInvalidSplitter(
+                fk_validated_frms
+            )
+            valid_model_frms, invalid_model_frms = frm_dict_valid_invalid_splitter.run()
+
+            # Step 4: Decide partial save
+            if mo_polars_kit.is_model_frms_empty(valid_model_frms):
+                return "fail", valid_model_frms, invalid_model_frms
+            if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
+                if not is_partial:
+                    return "fail", valid_model_frms, invalid_model_frms
+                status = "partial_ok"
+            else:
+                status = "ok"
+        else:
+            warnings.warn(
+                "Updating without validation may store unsafe or inconsistent data, "
+                "which can affect mindoff's read/update/delete functions. "
+                "Proceed only if intentional.",
+                RuntimeWarning,
+            )
+            status = "ok"
+            valid_model_frms, invalid_model_frms = model_frms, {}
+
+        # Step 5: Perform CRUD operation
+        crud_processor = CRUDProcessor(valid_model_frms)
+        _ = crud_processor.update(is_temp_table=is_temp_table, batch_size=batch_size)
+        return status, valid_model_frms, invalid_model_frms
+
+
+# --------------
+# Helper Classes
+# --------------
 class _ModelFrmsValidInvalidSplitter:
     """
     ⚠️ INTERNAL CLASS
@@ -170,207 +376,9 @@ class _ModelFrmsValidInvalidSplitter:
         return valid_model_frms, invalid_model_frms
 
 
-# --------------
-# Functions
-# --------------
-@typechecked
-def create(
-    model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
-    is_partial: bool = False,
-    is_validate: bool = True,
-    batch_size: int = 1000,
-) -> Tuple[str, Dict, Dict]:
-    model_frms = mo_polars_kit.sync_model_frms_type(model_frms)
-    if is_validate:
-        # Step 1: Column validation
-        column_validator = ColumnValidator(
-            model_frms=model_frms,
-            is_remove_extra_columns=True,
-            is_add_missing_columns=True,
-        )
-        valid_model_frms, invalid_model_frms = column_validator.run()
-        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
-            return "fail", valid_model_frms, invalid_model_frms
-
-        # Step 2: Row validation
-        row_validator = RowValidator(valid_model_frms)
-        row_validated_frms = row_validator.run()
-
-        # Step 3: Foreign key validation
-        fk_validator = ForeignKeyValidator(row_validated_frms)
-        fk_validated_frms = fk_validator.validate()
-        frm_dict_valid_invalid_splitter = _ModelFrmsValidInvalidSplitter(
-            fk_validated_frms
-        )
-        valid_model_frms, invalid_model_frms = frm_dict_valid_invalid_splitter.run()
-
-        # Step 4: Decide partial save
-        if mo_polars_kit.is_model_frms_empty(valid_model_frms):
-            return "fail", valid_model_frms, invalid_model_frms
-        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
-            if not is_partial:
-                return "fail", valid_model_frms, invalid_model_frms
-            status = "partial_ok"
-        else:
-            status = "ok"
-    else:
-        warnings.warn(
-            "Saving without validation may store unsafe or inconsistent data, "
-            "which can affect mindoff's read/update/delete functions. "
-            "Proceed only if intentional.",
-            RuntimeWarning,
-        )
-        status = "ok"
-        valid_model_frms, invalid_model_frms = model_frms, {}
-
-    # Step 5: Perform CRUD operation
-    crud_processor = CRUDProcessor(valid_model_frms)
-    _ = crud_processor.create(batch_size=batch_size)
-    return status, valid_model_frms, invalid_model_frms
-
-
-@typechecked
-def read(
-    qs: models.QuerySet,
-    *,
-    page_number: int | None = None,
-    is_lazy: bool = False,
-    batch_size: int = 0,
-) -> tuple[pl.DataFrame | pl.LazyFrame, dict[str, Any]]:
-    # 1. Validate and Normalize
-    mo_validation_kit.ensure(
-        issubclass(qs._iterable_class, models.query.ValuesIterable),
-        msg=f"Unsupported queryset type `{qs._iterable_class.__name__}`. "
-        "You must call `.values()` on the queryset before passing it to `read()`.",
-        is_exception=True,
-    )
-    mo_validation_kit.ensure_greater_equal(
-        batch_size,
-        0,
-        msg=f"The 'batch_size' parameter must be a positive integer. Provided value: {batch_size}",
-        is_exception=True,
-    )
-    if batch_size == 0:
-        batch_size = 100 if page_number else 1000
-
-    # 2. Empty Queryset
-    if not qs.exists():
-        df = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
-        stats = _read__build_stats(
-            mode="pagination" if page_number else "streaming",
-            batch_size=batch_size,
-            total_count=0,
-            total_pages=0,
-            current_page=page_number if page_number else 0,
-            has_next=False,
-            has_previous=False,
-        )
-        return df, stats
-
-    # 3. Streaming mode
-    if not page_number:
-        df = pl.concat(_read__batched_iterator(qs, batch_size, is_lazy), rechunk=False)
-        stats = _read__build_stats(
-            mode="streaming",
-            batch_size=batch_size,
-            total_count=qs.count(),
-            total_pages=0,
-            current_page=0,
-            has_next=False,
-            has_previous=False,
-        )
-        return df, stats
-
-    # 4. Pagination mode
-    paginator = Paginator(qs, batch_size)
-    try:
-        page = paginator.page(page_number)
-        df = pl.DataFrame(list(page)).lazy() if is_lazy else pl.DataFrame(list(page))
-        stats = _read__build_stats(
-            mode="pagination",
-            batch_size=batch_size,
-            total_count=paginator.count,
-            total_pages=paginator.num_pages,
-            current_page=page.number,
-            has_next=page.has_next(),
-            has_previous=page.has_previous(),
-        )
-    except EmptyPage:
-        df = pl.DataFrame([]).lazy() if is_lazy else pl.DataFrame([])
-        stats = _read__build_stats(
-            mode="pagination",
-            batch_size=batch_size,
-            total_count=paginator.count,
-            total_pages=paginator.num_pages,
-            current_page=page_number,
-            has_next=False,
-            has_previous=page_number > 1,
-        )
-
-    return df, stats
-
-
-@typechecked
-def update(
-    model_frms: Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]],
-    is_partial: bool = False,
-    is_validate: bool = True,
-    batch_size: int = 1000,
-    is_temp_table: bool = True,
-):
-    model_frms = _update__fill_missing_columns(model_frms, batch_size=batch_size)
-
-    if is_validate:
-        # Step 1: Column validation
-        column_validator = ColumnValidator(
-            model_frms=model_frms,
-            is_remove_extra_columns=True,
-            is_add_missing_columns=True,
-        )
-        valid_model_frms, invalid_model_frms = column_validator.run()
-        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
-            return "fail", valid_model_frms, invalid_model_frms
-
-        # Step 2: Row validation
-        row_validator = RowValidator(valid_model_frms)
-        row_validated_frms = row_validator.run()
-
-        # Step 3: Foreign key validation
-        fk_validator = ForeignKeyValidator(row_validated_frms)
-        fk_validated_frms = fk_validator.validate()
-        frm_dict_valid_invalid_splitter = _ModelFrmsValidInvalidSplitter(
-            fk_validated_frms
-        )
-        valid_model_frms, invalid_model_frms = frm_dict_valid_invalid_splitter.run()
-
-        # Step 4: Decide partial save
-        if mo_polars_kit.is_model_frms_empty(valid_model_frms):
-            return "fail", valid_model_frms, invalid_model_frms
-        if not mo_polars_kit.is_model_frms_empty(invalid_model_frms):
-            if not is_partial:
-                return "fail", valid_model_frms, invalid_model_frms
-            status = "partial_ok"
-        else:
-            status = "ok"
-    else:
-        warnings.warn(
-            "Updating without validation may store unsafe or inconsistent data, "
-            "which can affect mindoff's read/update/delete functions. "
-            "Proceed only if intentional.",
-            RuntimeWarning,
-        )
-        status = "ok"
-        valid_model_frms, invalid_model_frms = model_frms, {}
-
-    # Step 5: Perform CRUD operation
-    crud_processor = CRUDProcessor(valid_model_frms)
-    _ = crud_processor.update(is_temp_table=is_temp_table, batch_size=batch_size)
-    return status, valid_model_frms, invalid_model_frms
-
-
-mo_crud_kit = SimpleNamespace(create=create, read=read, update=update)
-
-
+# ----------------
+# Helper Functions
+# ----------------
 def _read__batched_iterator(qs: models.QuerySet, size: int, is_lazy: bool):
     it = qs.iterator(chunk_size=size)
     while True:
@@ -409,78 +417,74 @@ def _update__fill_missing_columns(
 ) -> Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]]:
     updated_model_frames = {}
 
-    for model_cls, df in model_frms.items():
+    for model_cls, frm in model_frms.items():
         # 1. Find Missing Columns and primary key
-        df_cols = set(df.columns)
+        df_cols = set(frm.columns)
         model_fields = {f.column or f.name for f in model_cls._meta.concrete_fields}
         missing_cols = list(model_fields - df_cols)
         pk_name = model_cls._meta.pk.name
         pk_column = model_cls._meta.pk.column
-
         pk_field = next((c for c in (pk_column, pk_name) if c in df_cols), None)
         mo_validation_kit.ensure_truthy(
             pk_field,
             msg=f"Primary key {pk_field} must exist in DataFrame to fetch missing columns.",
             is_exception=True,
         )
-        if pk_field in missing_cols:
-            missing_cols.remove(pk_field)
+        missing_cols = [c for c in missing_cols if c != pk_field]
         if not missing_cols:
-            updated_model_frames[model_cls] = df
+            updated_model_frames[model_cls] = frm
             continue
 
         # 2. Generate Missing Frame
-        schema = {pk_field: df.schema[pk_field], **dict.fromkeys(missing_cols, None)}
+        schema = {pk_field: frm.schema[pk_field], **dict.fromkeys(missing_cols, None)}
         base_missing_df = (
             pl.LazyFrame(schema=schema)
-            if isinstance(df, pl.LazyFrame)
+            if isinstance(frm, pl.LazyFrame)
             else pl.DataFrame(schema=schema)
         )
         missing_df = __update__fetch_missing_chunks(
-            model_cls, df, pk_field, missing_cols, batch_size, base_missing_df
+            model_cls, frm, pk_field, missing_cols, batch_size, base_missing_df
         )
 
         # 3. Cut off if no missing data to Merge
         if mo_polars_kit.is_frm_empty(missing_df):
             for col in missing_cols:
-                df = df.with_columns(pl.lit(None).alias(col))
-            updated_model_frames[model_cls] = df
+                frm = frm.with_columns(pl.lit(None).alias(col))
+            updated_model_frames[model_cls] = frm
             continue
 
         # 4. Check again and Final merge
-        overlap = set(df.columns) & set(missing_df.columns) - {pk_field}
+        overlap = set(frm.columns) & set(missing_df.columns) - {pk_field}
         mo_validation_kit.ensure_falsey(
             overlap,
             msg=f"Duplicate columns found during merge for model {model_cls.__name__}: {', '.join(overlap)}",
             is_exception=True,
         )
-
-        # Ensure join key dtypes match
-        left_dtype = df.schema[pk_field]
+        left_dtype = frm.schema[pk_field]
         right_dtype = missing_df.schema.get(pk_field)
-
-        if right_dtype is not None and left_dtype != right_dtype:
-            missing_df = missing_df.with_columns(pl.col(pk_field).cast(left_dtype))
-
-        df = df.join(missing_df, on=pk_field, how="left")
-        updated_model_frames[model_cls] = df
-
+        missing_df = (
+            missing_df.with_columns(pl.col(pk_field).cast(left_dtype))
+            if right_dtype is not None and left_dtype != right_dtype
+            else missing_df
+        )
+        frm = frm.join(missing_df, on=pk_field, how="left")
+        updated_model_frames[model_cls] = frm
     return updated_model_frames
 
 
 def __update__fetch_missing_chunks(
     model_cls,
-    df,
+    frm,
     pk_field: str,
     missing_cols: list[str],
     batch_size: int,
     base_missing_df,
 ):
-    is_lazy = isinstance(df, pl.LazyFrame)
+    is_lazy = isinstance(frm, pl.LazyFrame)
     if is_lazy:
-        pk_series = df.select(pk_field).collect(streaming=True)[pk_field]
+        pk_series = frm.select(pk_field).collect(streaming=True)[pk_field]
     else:
-        pk_series = df.get_column(pk_field)
+        pk_series = frm.get_column(pk_field)
     if pk_series.is_empty():
         return base_missing_df
     pk_list = pk_series.to_list()
@@ -496,7 +500,7 @@ def __update__fetch_missing_chunks(
             .annotate(**{temp_pk: Cast(F(pk_field), output_field=CharField())})
             .values(temp_pk, *missing_cols)
         )
-        chunk_df, _ = read(
+        chunk_df, _ = MindoffCRUDHandler().read(
             qs,
             is_lazy=is_lazy,
             batch_size=batch_size,
@@ -509,3 +513,9 @@ def __update__fetch_missing_chunks(
         return base_missing_df
 
     return pl.concat(collected_chunks, rechunk=False)
+
+
+# ----------------
+# Entry Point
+# ----------------
+mo_validation_kit = MindoffCRUDHandler()

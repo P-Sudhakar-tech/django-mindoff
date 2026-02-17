@@ -8,6 +8,9 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from model_bakery import baker
 
 
+# ----------------
+# Classes
+# ----------------
 class FieldValueGenerator:
     def __init__(self, field, used_uniques, partial_kwargs, is_uuid_hex):
         self.field = field
@@ -192,6 +195,9 @@ class FieldValueGenerator:
         return None
 
 
+# ----------------
+# Functions
+# ----------------
 def generate_field_value(field, used_uniques, partial_kwargs, is_uuid_hex):
     return FieldValueGenerator(
         field=field,

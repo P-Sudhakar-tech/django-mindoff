@@ -1,21 +1,3 @@
-"""
-1. Column Validation Exact Columns Accepts
-3. Column Validation Extra Columns removed Accepts
-3. Column Validation Add Missing Non Required Columns Accepts
-4. Column Validation Missing Required Columns Rejects
-
-
-1. Row Validation Valid Rows Accepts
-2. Row Validation Incorrect Row Partial Parent Rejects
-3. Row Validation Incorrect Row Partial First Child Rejects
-4. Row Validation Incorrect Row Partial Last Child Rejects
-5. Row Validation Incorrect Row all Rejects
-
-1. Foreign Key Validation Valid Rows Accepts
-2. Foreign Key Validation Invalid Rows Partial Rejects
-3. Foreign Key Validation Invalid Rows all Rejects
-"""
-
 import uuid
 
 import polars as pl
@@ -362,8 +344,6 @@ class TestCreateCrud(MindoffTestCase):
             pks = df[pk_column].to_list()
             db_rows = model.objects.filter(**{f"{pk_field}__in": pks}).values()
             db_df = pl.DataFrame(list(db_rows))
-            all_db_rows = model.objects.all().values()
-            all_db_df = pl.DataFrame(list(all_db_rows))
             assert not mo_polars_kit.is_frm_empty(
                 db_df
             ), f"{model.__name__}: no rows found in database"
@@ -689,7 +669,7 @@ class TestUpdateCrud(MindoffTestCase):
             (
                 "upsert_non_existing_main",
                 [],
-                [{0: {"author_ref_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
+                [{0: {"id": str(uuid.uuid4().hex), "name": "Inserted"}}],
                 "main",
                 "upsert",
                 "ok",
@@ -701,7 +681,7 @@ class TestUpdateCrud(MindoffTestCase):
                     {},
                     {
                         0: {
-                            "book_ref_id": str(uuid.uuid4().hex),
+                            "id": str(uuid.uuid4().hex),
                             "title": "Inserted Book",
                             "pages": 123,
                         }
@@ -717,14 +697,14 @@ class TestUpdateCrud(MindoffTestCase):
                 [
                     {
                         0: {
-                            "author_ref_id": shared_uuid_author_book_relation,
+                            "id": shared_uuid_author_book_relation,
                             "name": "Inserted Author",
                             "nickname": "Inserted Book",
                         }
                     },
                     {
                         0: {
-                            "book_ref_id": str(uuid.uuid4().hex),
+                            "id": str(uuid.uuid4().hex),
                             "edition": "Inserted Book Edition",
                             "title": "Inserted Book Title",
                             "author_ref_id": shared_uuid_author_book_relation,
@@ -896,7 +876,7 @@ class TestUpdateCrud(MindoffTestCase):
             (
                 "upsert_non_existing_main",
                 [],
-                [{0: {"author_ref_id": str(uuid.uuid4().hex), "name": "Inserted"}}],
+                [{0: {"id": str(uuid.uuid4().hex), "name": "Inserted"}}],
                 "main",
                 "upsert",
                 "ok",
@@ -908,7 +888,7 @@ class TestUpdateCrud(MindoffTestCase):
                     {},
                     {
                         0: {
-                            "book_ref_id": str(uuid.uuid4().hex),
+                            "id": str(uuid.uuid4().hex),
                             "title": "Inserted Book",
                             "pages": 123,
                         }
@@ -924,14 +904,14 @@ class TestUpdateCrud(MindoffTestCase):
                 [
                     {
                         0: {
-                            "author_ref_id": shared_uuid_author_book_relation,
+                            "id": shared_uuid_author_book_relation,
                             "name": "Inserted Author",
                             "nickname": "Inserted Book",
                         }
                     },
                     {
                         0: {
-                            "book_ref_id": str(uuid.uuid4().hex),
+                            "id": str(uuid.uuid4().hex),
                             "edition": "Inserted Book Edition",
                             "title": "Inserted Book Title",
                             "author_ref_id": shared_uuid_author_book_relation,
