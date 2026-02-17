@@ -2,6 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 from tqdm import tqdm
+from ..helper_kit import mo_helper_kit
 
 
 class DjangoCodeOrganizer:
@@ -9,6 +10,7 @@ class DjangoCodeOrganizer:
         self.targets = targets or []
         self.altered_files: list[Path] = []
 
+    @mo_helper_kit.file_guardian
     def run(self):
         files = self._resolve_files()
 

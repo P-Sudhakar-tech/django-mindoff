@@ -518,4 +518,4 @@ def __update__fetch_missing_chunks(
 # ----------------
 # Entry Point
 # ----------------
-mo_validation_kit = MindoffCRUDHandler()
+mo_crud_kit = MindoffCRUDHandler()

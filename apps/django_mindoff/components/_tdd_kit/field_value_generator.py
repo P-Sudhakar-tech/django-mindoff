@@ -30,12 +30,6 @@ class FieldValueGenerator:
                 value = value.hex
             return value
 
-        # null_blank_decision = self._choose_null_blank_outcome()
-        # if null_blank_decision == "null":
-        #     return None
-        # elif null_blank_decision == "blank":
-        #     return ""
-
         field_type = self.field.get_internal_type()
         method_name = f"_gen_{field_type.lower()}"
         method = getattr(self, method_name, None)

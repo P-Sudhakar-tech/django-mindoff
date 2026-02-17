@@ -5,11 +5,13 @@ from typing import List, Any, Callable, Dict, Literal, Tuple, Type, Union
 import polars as pl
 import pathlib
 import uuid
+import tempfile
 from django.db import models
 from typeguard import typechecked
 
 from .validation_kit import mo_validation_kit
 from ._polars_kit.json_to_frame import json_to_frame, build_model_frms
+from pathlib import Path
 
 
 # ----------------
@@ -107,7 +109,6 @@ class MindoffPolarsKit:
         fill_value: Any | Callable[..., Any],
         mode: Literal["lit", "map", "sink_map"],
         dtype: type | None = None,
-        checkpoint_dir: str = "tmp_checkpoints",
         **custom_params: Any,
     ) -> pl.DataFrame | pl.LazyFrame:
         if mode == "lit":
@@ -136,7 +137,6 @@ class MindoffPolarsKit:
             column=column,
             mode=mode,
             dtype=dtype,
-            checkpoint_dir=checkpoint_dir,
             batch_logic=_logic,
             loaded_func=loaded_func,
         )
@@ -151,7 +151,6 @@ class MindoffPolarsKit:
         mode: Literal["lit", "map", "sink_map"],
         row_param: str | None = None,
         dtype: type | None = None,
-        checkpoint_dir: str = "tmp_checkpoints",
         **custom_params: Any,
     ) -> pl.DataFrame | pl.LazyFrame:
         mo_validation_kit.ensure(
@@ -188,7 +187,6 @@ class MindoffPolarsKit:
             column=column,
             mode=mode,
             dtype=dtype,
-            checkpoint_dir=checkpoint_dir,
             batch_logic=_logic,
             loaded_func=loaded_func,
         )
@@ -212,7 +210,6 @@ def _apply_batch_transform(
     column: str,
     mode: Literal["map", "sink_map"],
     dtype: type | None,
-    checkpoint_dir: str,
     batch_logic: Callable[[pl.Series, Callable[..., Any], type], pl.Series],
     loaded_func: Callable[..., Any],
 ) -> pl.DataFrame | pl.LazyFrame:
@@ -228,10 +225,11 @@ def _apply_batch_transform(
     )
     if mode == "map" or isinstance(fr, pl.DataFrame):
         return transformed_fr
-    pathlib.Path(checkpoint_dir).mkdir(exist_ok=True)
-    tmp_path = f"{checkpoint_dir}/freeze_{uuid.uuid4().hex}.parquet"
-    transformed_fr.sink_parquet(tmp_path)
-    return pl.scan_parquet(tmp_path)
+    tmp_dir = Path(tempfile.gettempdir()) / "django_mindoff" / "polars_processing"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"freeze_{uuid.uuid4().hex}.parquet"
+    transformed_fr.sink_parquet(str(tmp_path))
+    return pl.scan_parquet(str(tmp_path))
 
 
 # ----------------

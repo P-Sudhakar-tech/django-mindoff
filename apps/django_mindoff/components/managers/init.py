@@ -88,6 +88,9 @@ class DjangoProjectCreator:
             "redis",
             "hiredis",
             "django-ratelimit",
+            "sqlalchemy",
+            "orjson",
+            "pyarrow",
         ]
         subprocess.run(
             [self.pip_cmd, "install", *base_packages],
@@ -146,6 +149,19 @@ class DjangoProjectCreator:
                 updated = updated.replace(
                     "from pathlib import Path", "import os\nfrom pathlib import Path"
                 )
+        mindoff_header = "# ===== MINDOFF SPECIFIC SETTINGS OPTIONS ====="
+
+        if mindoff_header not in updated:
+            updated += f"""
+{mindoff_header}
+MINDOFF_LOG_ERRORS_IN_DEBUG = False
+MINDOFF_TRACEBACK_DIRS = ["apps", "config"]
+REDIS_URL = config("REDIS_URL")
+POLARS_VALIDATOR_ERROR_COL = "__error__info"
+"""
+
+        self.settings_path.write_text(updated)
+        self.secret_key = secret_key
 
         self.settings_path.write_text(updated)
         self.secret_key = secret_key
@@ -209,9 +225,14 @@ class DjangoProjectCreator:
         shutil.copy(source, target)
 
         print("[ACTION] Writing .gitignore.")
-        source = Path(__file__).parent / "resources" / ".gitignore"
+        source = Path(__file__).parent / "resources" / "_gitignore.txt"
         target = self.project_root / ".gitignore"
         shutil.copy(source, target)
+
+        print("[ACTION] Copying Responses.csv to config folder.")
+        responses_src = Path(__file__).parent / "resources" / "Responses.csv"
+        responses_dst = self.config_dir / "Responses.csv"
+        shutil.copy(responses_src, responses_dst)
 
     def _initialize_git(self):
         print("[ACTION] Setting up Git.")

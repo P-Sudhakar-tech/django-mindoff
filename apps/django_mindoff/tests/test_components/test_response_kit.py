@@ -319,7 +319,7 @@ class TestExceptionHandler(MindoffTestCase):
         @mo_api_kit.api_guardian
         def view(request):
             return mo_response_kit.json_response(
-                "SUCCESS", category="success", data=default_data
+                code="SUCCESS", category="success", data=default_data
             )
 
         request = rf.get("/")
