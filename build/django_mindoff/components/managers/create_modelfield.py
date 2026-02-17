@@ -113,25 +113,16 @@ class DjangoModelFieldCreator:
         return start, len(lines)
 
     def _validate_field_name(self):
+        if not self.field_name:
+            return
         if self.field_name.endswith("_"):
             raise ValueError(
                 f"Foreign key field name '{self.field_name}' cannot end with '_'"
             )
-
         if not re.match(r"^[a-z][a-z0-9_]*$", self.field_name):
             raise ValueError(f"Invalid field name '{self.field_name}'")
-
         if not self.field_name.endswith("_ref"):
             self.field_name = f"{self.field_name}_ref"
-
-        lines = self.model_file.read_text().splitlines()
-        start, end = self._get_model_block(lines)
-        model_block = "\n".join(lines[start:end])
-
-        if re.search(rf"\b{self.field_name}\s*=", model_block):
-            raise ValueError(
-                f"Field '{self.field_name}' already exists in {self.model_name}"
-            )
 
     def _validate_foreign_key(self):
         if not self.to:
@@ -164,34 +155,22 @@ class DjangoModelFieldCreator:
         self.parent_app = parent_app
         self.parent_model = parent_model
 
-        if self.parent_app != self.app_slug:
-            self.model_import_path = f"apps.{self.parent_app}"
-            self.model_import_alias = f"{self.parent_app}_models"
-        else:
-            self.model_import_path = None
-            self.model_import_alias = None
+        # Auto-generate field name from parent model name if blank
+        if not self.field_name:
+            # OrderItemModel → order_item_ref
+            base = re.sub(r"(?<!^)(?=[A-Z])", "_", parent_model).lower()
+            base = base.replace("_model", "")
+            self.field_name = f"{base}_ref"
+            print(f"[OK] Auto-generated field name: '{self.field_name}'")
 
-    def _ensure_model_import(self):
-        if not self.model_import_path:
-            return
-
-        import_line = (
-            f"from {self.model_import_path} "
-            f"import models as {self.model_import_alias}"
-        )
-
+        # Check for duplicate field in target model block
         lines = self.model_file.read_text().splitlines()
-
-        if import_line in lines:
-            return
-
-        insert_at = 0
-        for i, line in enumerate(lines):
-            if line.startswith(("from ", "import ")):
-                insert_at = i + 1
-
-        lines.insert(insert_at, import_line)
-        self.model_file.write_text("\n".join(lines))
+        start, end = self._get_model_block(lines)
+        model_block = "\n".join(lines[start:end])
+        if re.search(rf"\b{self.field_name}\s*=", model_block):
+            raise ValueError(
+                f"Field '{self.field_name}' already exists in {self.model_name}"
+            )
 
     # -------------------------
     # Field Builder
@@ -215,11 +194,8 @@ class DjangoModelFieldCreator:
     def _build_foreign_key_field(self) -> str:
         related_name = self._build_related_name()
 
-        target_model = (
-            f"{self.model_import_alias}.{self.parent_model}"
-            if self.model_import_alias
-            else self.parent_model
-        )
+        # String reference: "app_label.ModelName" — avoids cross-app imports
+        target_model = f'"{self.parent_app}.{self.parent_model}"'
 
         options = [
             f"on_delete=models.{self.on_delete}",
@@ -285,7 +261,6 @@ class DjangoModelFieldCreator:
         self._parse_model_path()
         self._validate_field_name()
         self._validate_foreign_key()
-        self._ensure_model_import()
 
         field_code = self._build_foreign_key_field()
         self._append_field_to_model(field_code)

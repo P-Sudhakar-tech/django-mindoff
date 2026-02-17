@@ -47,7 +47,11 @@ def register_subcommand(subparsers):
             remaining_args = _create_api_flow(local_apps)
 
         if remaining_args:
-            subprocess.run([sys.executable, "mindoff.py", command] + remaining_args)
+            if command == "createmodel":
+                for model_path in remaining_args:
+                    subprocess.run([sys.executable, "mindoff.py", command, model_path])
+            else:
+                subprocess.run([sys.executable, "mindoff.py", command] + remaining_args)
 
     parser = subparsers.add_parser(
         "create", help="Guided interactive creator for apps, models, and APIs"
@@ -80,62 +84,80 @@ def _create_model_flow(local_apps):
         print("❌ Invalid app selection. Please try again.")
 
     while True:
-        model_name = input("\n⌨️  Model name (PascalCase, e.g. ProductItem): ").strip()
-        if re.match(r"^[A-Z][a-zA-Z0-9]*$", model_name):
+        model_input = input(
+            "\n⌨️  Model name(s) (PascalCase, space-separated, e.g. ProductItem OrderLine): "
+        ).strip()
+        model_names = model_input.split()
+        if model_names and all(
+            re.match(r"^[A-Z][a-zA-Z0-9]*$", m) for m in model_names
+        ):
             break
-        print("❌ Invalid model name. Must be PascalCase (e.g. ProductItem).")
+        print("❌ Invalid model name(s). Each must be PascalCase (e.g. ProductItem).")
 
-    return [f"{app_name}/{model_name}"]
+    return [f"{app_name}/{model_name}" for model_name in model_names]
 
 
 # -------------------
-# 3. Create Model Field
+# 3. Create Foreign Key Field
 # -------------------
 def _create_model_field_flow(local_apps):
-    # 1. Choose Model
-    print("\n# ------- Mindoff > Create > Model Field ------- #")
+    print("\n# ------- Mindoff > Create > Foreign Key Field ------- #")
     models, model = _choose_a_existing_model(local_apps)
     if not model:
         return []
 
-    # 2. Enter Field Name
-    while True:
-        field_name = input("\n⌨️  Field name (snake_case, e.g. to_account): ").strip()
-        if re.match(r"^[a-z][a-z0-9_]*$", field_name):
-            break
-        print("❌ Invalid field name. Must be snake_case.")
+    # Determine existing fields in chosen model for duplicate checking
+    app, model_class = model.split("/")
+    model_file = apps_folder / app / "models.py"
+    model_text = model_file.read_text() if model_file.exists() else ""
+
+    # Field name — blank allowed (auto-generate), but force input if auto name collides
+    field_name = input(
+        "\n⌨️  Field name (snake_case, leave blank to auto-generate): "
+    ).strip()
+
+    if field_name:
+        # Validate format
+        while not re.match(r"^[a-z][a-z0-9_]*$", field_name) or field_name.endswith(
+            "_"
+        ):
+            print("❌ Invalid field name. Must be snake_case (e.g. to_account).")
+            field_name = input("⌨️  Field name: ").strip()
+        # Normalise to _ref suffix for duplicate check
+        normalised = field_name if field_name.endswith("_ref") else f"{field_name}_ref"
+        if re.search(rf"\b{normalised}\s*=", model_text):
+            print(
+                f"⚠️  Field '{normalised}' already exists in {model_class}. You must provide a different name."
+            )
+            while True:
+                field_name = input("⌨️  Field name: ").strip()
+                if (
+                    not field_name
+                    or not re.match(r"^[a-z][a-z0-9_]*$", field_name)
+                    or field_name.endswith("_")
+                ):
+                    print("❌ Invalid field name.")
+                    continue
+                normalised = (
+                    field_name if field_name.endswith("_ref") else f"{field_name}_ref"
+                )
+                if re.search(rf"\b{normalised}\s*=", model_text):
+                    print(f"❌ '{normalised}' also already exists. Try another name.")
+                    continue
+                break
+
     args = [model, field_name, "foreign_key"]
-
-    # 3. Proceed with Field Creation
     args = __create_foreign_key_field_flow(args, models)
-
     return args
 
 
 def __create_foreign_key_field_flow(args, models):
-    # 1. Choose Parent
     while True:
         parent = _choose_from_list("Select Parent Model:", models)
         if parent:
             break
         print("❌ Invalid parent model. Please try again.")
     args += ["--to", parent]
-
-    # 2. Choose on_delete behavior
-    on_delete_choices = [
-        "CASCADE",
-        "PROTECT",
-        "SET_NULL",
-        "SET_DEFAULT",
-        "DO_NOTHING",
-    ]
-    on_delete = _choose_from_list(
-        "Select on_delete behavior (default: CASCADE):",
-        on_delete_choices,
-        "(leave blank for default)",
-    )
-    if on_delete:
-        args += ["--on_delete", on_delete]
     return args
 
 
