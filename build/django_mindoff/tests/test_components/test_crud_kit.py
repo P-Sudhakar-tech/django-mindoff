@@ -185,7 +185,7 @@ class TestCreateCrud(MindoffTestCase):
     ):
         app_name = self.mo_mock_app()
         author_model, book_model, chapter_model = self._make_model(app_name)
-        df_dict = self.mo_mock_model_dfs(
+        df_dict = self.mo_mock_model_frms(
             models=[author_model, book_model, chapter_model],
             exclude_columns=remove_columns,
             modify=modify_rows,
@@ -237,7 +237,7 @@ class TestCreateCrud(MindoffTestCase):
     def test_create_without_validation_accepts_rejects(self, is_lazy, should_raise):
         app_name = self.mo_mock_app()
         author_model, book_model, chapter_model = self._make_model(app_name)
-        df_dict = self.mo_mock_model_dfs(
+        df_dict = self.mo_mock_model_frms(
             models=[author_model, book_model, chapter_model],
             counts=[2, 1, 1],
             is_uuid_hex=False if should_raise else True,
@@ -263,11 +263,11 @@ class TestCreateCrud(MindoffTestCase):
     def test_multiple_create_boundary(self, is_lazy):
         app_name = self.mo_mock_app()
         author_model, book_model, chapter_model = self._make_model(app_name)
-        df_dict_1 = self.mo_mock_model_dfs(
+        df_dict_1 = self.mo_mock_model_frms(
             models=[author_model, book_model, chapter_model],
             counts=[2, 1, 1],
         )
-        df_dict_2 = self.mo_mock_model_dfs(
+        df_dict_2 = self.mo_mock_model_frms(
             models=[author_model, book_model, chapter_model],
             counts=[2, 1, 1],
         )
@@ -600,7 +600,7 @@ class TestReadCrud(MindoffTestCase):
             foreign_keys=[(author_model._meta.app_label, author_model.__name__)],
         )
         # Create data: parent_count × child_count
-        df_dict = self.mo_mock_model_dfs(
+        df_dict = self.mo_mock_model_frms(
             models=[author_model, book_model], counts=[parent_count, child_count]
         )
         mo_crud_kit.create(df_dict, is_partial=False)
@@ -751,7 +751,7 @@ class TestUpdateCrud(MindoffTestCase):
         )
 
         # 2. Create initial data (parent + child)
-        df_dict = self.mo_mock_model_dfs(
+        df_dict = self.mo_mock_model_frms(
             models=[author_model, book_model],
             counts=[3, 1],
         )
@@ -772,7 +772,7 @@ class TestUpdateCrud(MindoffTestCase):
         assert created_status == "ok"
 
         # 4. Prepare update DataFrames
-        update_dict = self.mo_update_mock_model_dfs(
+        update_dict = self.mo_update_mock_model_frms(
             created_valid_dfs,
             exclude_columns=remove_columns,
             modify=modify_rows,
@@ -958,7 +958,7 @@ class TestUpdateCrud(MindoffTestCase):
         )
 
         # 2. Create initial data (parent + child)
-        df_dict = self.mo_mock_model_dfs(
+        df_dict = self.mo_mock_model_frms(
             models=[author_model, book_model],
             counts=[3, 1],
         )
@@ -979,7 +979,7 @@ class TestUpdateCrud(MindoffTestCase):
         assert created_status == "ok"
 
         # 4. Prepare update DataFrames
-        update_dict = self.mo_update_mock_model_dfs(
+        update_dict = self.mo_update_mock_model_frms(
             created_valid_dfs,
             exclude_columns=remove_columns,
             modify=modify_rows,

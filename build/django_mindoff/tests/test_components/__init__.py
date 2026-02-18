@@ -1,1 +1,1 @@
-# apps\django_mindoff\tests\_test__components\__init__.py
+# apps\django_mindoff\tests\test_components\__init__.py

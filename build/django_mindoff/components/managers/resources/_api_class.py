@@ -30,7 +30,7 @@ class MindOffSampleAPI(mo_api_kit.MindoffAPIMixin):
     payload_validation: Literal["strict", "basic", None] = None
 
     # 4. Response Rules
-    response_type: Literal["json", "plain", "html", "xml", "binary", "others"] = "json"
+    response_type: Literal["json", "plain", "html", "binary", "others"] = "json"
     response_validation: bool = True
 
     # 5. Usage Limits Per User
