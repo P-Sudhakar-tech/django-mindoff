@@ -8,7 +8,7 @@ class TestSampleAPIView(MindoffTestCase):
     api_url_name = "{{API_URL_NAME}}"
 
     def test_acceptance_api_success(self):
-        user = self.mo_create_user()
+        user: callable | None = self.mo_create_user()
         payload: dict | list | None = None
         url_kwargs: dict | None = None
         query_params: dict | None = None
@@ -33,4 +33,3 @@ class TestSampleAPIView(MindoffTestCase):
             expected_response_type=expected_response_type,
         )
         # result = response.json()
-        # assert result["data"] == []
