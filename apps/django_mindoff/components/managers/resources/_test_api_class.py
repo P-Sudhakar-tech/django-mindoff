@@ -1,34 +1,38 @@
 import pytest
 from django_mindoff.components.tdd_kit import MindoffTestCase
-from django.urls import reverse
-from django.contrib.auth import get_user_model
+from typing import Literal
 
 
 @pytest.mark.django_db
 class TestSampleAPIView(MindoffTestCase):
     api_url_name = "{{API_URL_NAME}}"
 
-    def test_api_works(self):
-        # 1. Call API
+    def test_acceptance_api_success(self):
+        user = self.mo_create_user()
+        custom_payload: dict | list | None = None
+        url_kwargs: dict | None = None
+        query_params: dict | None = None
+        headers: dict | None = None
+        list_dict_count: int = 1
+        expected_status_code: int = 200
+        custom_response_type: Literal[
+            "json", "plain", "html", "binary", "others", None
+        ] = None
+
         response = self.mo_test_api(
-            api_url_name=self.api_url_name,
-            user=self._create_user(),
-            headers=None,
-            custom_method=None,
-            custom_payload=None,
-            custom_url_kwargs=None,
-            custom_query_params=None,
+            self.api_url_name,
+            user=user,
+            custom_payload=custom_payload,
+            url_kwargs=url_kwargs,
+            custom_query_params=query_params,
+            headers=headers,
+            list_dict_count=list_dict_count,
         )
-        # 2. Assert response
         self.mo_assert_api_response(
             api_url_name=self.api_url_name,
             response=response,
-            custom_response_type=None,  # options: json | plain | html | xml | binary
-            expected_status_code=200,  # options: 200 | 400
+            expected_status_code=expected_status_code,
+            custom_response_type=custom_response_type,
         )
-        # -- Add additional assertions here --
-
-    def _create_user(self, username="testuser", password="password123"):
-        user_model = get_user_model()
-        user = user_model.objects.create_user(username=username, password=password)
-        return user
+        body = response.json()
+        assert body["data"] == []

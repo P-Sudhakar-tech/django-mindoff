@@ -64,11 +64,11 @@ class RowValidator:
 
     def run(self) -> Dict[Type[models.Model], Union[pl.DataFrame, pl.LazyFrame]]:
         return {
-            model: self._sanitize_model_df(model, df)
+            model: self._sanitize_model_frm(model, df)
             for model, df in self.df_dict.items()
         }
 
-    def _sanitize_model_df(self, model, df):
+    def _sanitize_model_frm(self, model, df):
         if mo_polars_kit.is_frm_empty(df):
             return df
         if ERROR_COL not in df.columns:

@@ -1,11 +1,13 @@
 import shutil
 import sys
 import secrets
-import tempfile
 import uuid
+import warnings
+import typing
+import tempfile
 from collections import namedtuple
 from pathlib import Path
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, get_args, get_origin, Literal
 
 import polars as pl
 import pytest
@@ -26,6 +28,7 @@ from rest_framework.test import APIClient
 from http import HTTPStatus
 from ..components.managers.create_app import DjangoAppCreator
 from django.urls import clear_url_caches
+from django.contrib.auth import get_user_model
 
 
 # ----------------
@@ -34,6 +37,8 @@ from django.urls import clear_url_caches
 PASCAL_CASE_REGEX = r"^[A-Z][a-zA-Z0-9]+$"
 SNAKE_CASE_REGEX = r"^[a-z0-9_]+$"
 test_case = SimpleTestCase()
+_ANSI_YELLOW = "\033[93m"
+_ANSI_RESET = "\033[0m"
 
 
 # ----------------
@@ -46,12 +51,13 @@ class MindoffTestCase:
         self.mo_mock_app = request.getfixturevalue("_mo_mock_app")
         self.mo_mock_model = request.getfixturevalue("_mo_mock_model")
         self.init_temp_dir = request.getfixturevalue("_init_temp_dir")
-        self.mo_mock_model_dfs = request.getfixturevalue("_mo_mock_model_dfs")
-        self.mo_update_mock_model_dfs = request.getfixturevalue(
-            "_mo_update_mock_model_dfs"
+        self.mo_mock_model_frms = request.getfixturevalue("_mo_mock_model_frms")
+        self.mo_update_mock_model_frms = request.getfixturevalue(
+            "_mo_update_mock_model_frms"
         )
         self.mo_test_api = request.getfixturevalue("_mo_test_api")
         self.mo_assert_api_response = request.getfixturevalue("_mo_assert_api_response")
+        self.mo_create_user = request.getfixturevalue("_mo_create_user")
         self.client = APIClient()
         if hasattr(mo_validation_kit, "reset"):
             mo_validation_kit.reset()
@@ -230,9 +236,9 @@ urlpatterns = original_patterns + [
         return __setup
 
     @pytest.fixture
-    def _mo_mock_model_dfs(self, request):
+    def _mo_mock_model_frms(self, request):
         @typechecked
-        def __bake_model_df_dict(
+        def __bake_model_frm_dict(
             models: List[Type],
             *,
             counts: List[int] = [],
@@ -267,12 +273,12 @@ urlpatterns = original_patterns + [
                 df_dict[model] = df
             return df_dict
 
-        return __bake_model_df_dict
+        return __bake_model_frm_dict
 
     @pytest.fixture
-    def _mo_update_mock_model_dfs(self, request):
+    def _mo_update_mock_model_frms(self, request):
         @typechecked
-        def __update_model_df_dict(
+        def __update_model_frm_dict(
             df_dict: dict[Type, pl.DataFrame],
             *,
             counts: List[int] = [],
@@ -321,72 +327,175 @@ urlpatterns = original_patterns + [
                 updated_df_dict[model] = new_df
             return updated_df_dict
 
-        return __update_model_df_dict
+        return __update_model_frm_dict
 
     @pytest.fixture
     def _mo_test_api(self, request):
+        """
+        Returns a callable that sends a request to the named API endpoint
+        and returns the **raw Response object**.
+
+        Signature:
+            mo_test_api(
+                api_url_name,
+                *,
+                user=None,
+                headers=None,
+                custom_payload=None,
+                url_kwargs=None,
+                custom_query_params=None,
+                list_dict_count=1,
+                **extra,
+            ) -> Response
+
+        Resolution order for each parameter
+        ─────────────────────────────────────────────────────────────────────
+        method
+            Always taken from api_cls.method.
+
+        payload  (POST / PUT / PATCH only)
+            1. custom_payload
+            2. auto-generated from api_cls.payload_schema  (warns if missing)
+
+        url_kwargs
+            REQUIRED when the URL contains named capture groups (e.g. <int:pk>).
+            If the URL has named groups and url_kwargs is not supplied, a
+            descriptive error is raised listing every required kwarg and its
+            converter type so the caller knows exactly what to pass.
+
+        query_params
+            1. custom_query_params
+            2. auto-generated from api_cls.query_params_schema
+               e.g.  query_params_schema = {"page": int, "search": str}
+            3. None  (omitted from URL when no schema and no custom value)
+
+        headers
+            Merged on top of {"Accept": "application/json"}.
+            Content-Type is set automatically for mutation methods.
+        """
+
         @typechecked
-        def __call_api_client_get_response(
-            self,
+        def __call(
             api_url_name: str,
             *,
             user=None,
             headers: dict | None = None,
-            custom_method: str | None = None,
             custom_payload: list | dict | None = None,
-            custom_url_kwargs: dict | None = None,
+            url_kwargs: dict | None = None,
             custom_query_params: dict | None = None,
+            list_dict_count: int = 1,
             **extra,
         ):
-            api_cls_attr = _get_api_cls_attributes(api_url_name)
-            json_content_type_str = "application/json"
-            plain_content_type_str = "text/plain"
-            html_content_type_str = "text/html"
-            method = custom_method if custom_method else api_cls_attr.method
-            payload = custom_payload if custom_payload else api_cls_attr.payload_sample
-            query_params = (
-                custom_query_params
-                if custom_query_params
-                else api_cls_attr.query_parameter_sample
-            )
-            url_kwargs = (
-                custom_url_kwargs
-                if custom_url_kwargs
-                else api_cls_attr.url_kwargs_sample
-            )
-            url = reverse(api_url_name, kwargs=url_kwargs or {})
-            if query_params:
-                from urllib.parse import urlencode
+            from urllib.parse import urlencode
 
+            api_cls_attr = _get_api_cls_attributes(api_url_name)
+            JSON_CT = "application/json"
+
+            # ── Method ───────────────────────────────────────────────────────
+            method = getattr(api_cls_attr, "method", "get").lower()
+
+            schema = getattr(api_cls_attr, "payload_schema", None)
+
+            # ── Payload resolution ────────────────────────────────────────────
+            if custom_payload is not None:
+                payload = custom_payload
+
+            elif method in {"post", "put", "patch"}:
+                if schema is None:
+                    warnings.warn(
+                        f"[mo_test_api] '{api_url_name}': payload_schema is None for a "
+                        f"{method.upper()} request. Sending empty payload — set "
+                        f"payload_schema on the API class or pass custom_payload.",
+                        stacklevel=2,
+                    )
+                    payload = {}
+                else:
+                    _warn_ansi(
+                        f"Auto-generating payload from payload_schema for '{api_url_name}'. "
+                        f"Use custom_payload if your test requires specific field constraints."
+                    )
+                    payload = _build_payload_from_schema(schema, list_dict_count)
+
+            else:
+                payload = None  # GET / DELETE — no body
+
+            # ── URL kwargs resolution ─────────────────────────────────────────
+            # If the URL pattern has named capture groups the caller MUST supply
+            # url_kwargs — we never silently infer values to avoid false-positive tests.
+            pattern_groups = _get_url_pattern_named_groups(api_url_name)
+            if pattern_groups and url_kwargs is None:
+                required = ", ".join(
+                    f"{name} ({conv})" for name, conv in pattern_groups.items()
+                )
+                raise ValueError(
+                    f"[mo_test_api] '{api_url_name}' has URL kwargs but none were provided"
+                    f"  Required: {required}."
+                    f"  Fix: pass url_kwargs to mo_test_api()."
+                )
+            resolved_url_kwargs = url_kwargs or {}
+
+            # ── Query params resolution ───────────────────────────────────────
+            if custom_query_params is not None:
+                query_params = custom_query_params
+            else:
+                query_params_schema = getattr(api_cls_attr, "query_params_schema", None)
+                if query_params_schema is not None:
+                    _warn_ansi(
+                        f"Auto-generating query params from query_params_schema for "
+                        f"'{api_url_name}'. Use custom_query_params if your test "
+                        f"requires specific values."
+                    )
+                    query_params = _build_payload_from_schema(
+                        query_params_schema, list_dict_count
+                    )
+                    if not isinstance(query_params, dict):
+                        _warn_ansi(
+                            f"query_params_schema for '{api_url_name}' produced a "
+                            f"{type(query_params).__name__} — expected a flat dict. "
+                            f"Query params omitted."
+                        )
+                        query_params = None
+                else:
+                    query_params = None
+
+            # ── Build URL ─────────────────────────────────────────────────────
+            url = reverse(api_url_name, kwargs=resolved_url_kwargs)
+            if query_params:
                 url = f"{url}?{urlencode(query_params)}"
+
+            # ── Auth ──────────────────────────────────────────────────────────
             if user is not None:
                 self.client.force_authenticate(user=user)
-            method = method.lower()
-            client_method = getattr(self.client, method, None)
-            mo_validation_kit.ensure_truthy(
-                client_method,
-                msg=f"Unsupported HTTP method: {method}",
-                is_exception=True,
-            )
-            final_headers = {"Accept": json_content_type_str}
+
+            # ── Headers ───────────────────────────────────────────────────────
+            final_headers = {"Accept": JSON_CT}
             if headers:
                 final_headers.update(headers)
             if (
                 method in {"post", "put", "patch"}
                 and "Content-Type" not in final_headers
             ):
-                final_headers["Content-Type"] = json_content_type_str
+                final_headers["Content-Type"] = JSON_CT
+
+            # ── Guard ─────────────────────────────────────────────────────────
             mo_validation_kit.ensure_in(
-                method, ["get", "post", "put", "delete"], is_exception=True
+                method, ["get", "post", "put", "patch", "delete"], is_exception=True
             )
             if method in {"get", "delete"}:
                 mo_validation_kit.ensure_falsey(
                     payload,
-                    msg=f"{method.upper()} requests cannot have a payload. Use query_params instead.",
+                    msg=(
+                        f"{method.upper()} requests cannot have a payload. "
+                        f"Use custom_query_params instead."
+                    ),
                     is_exception=True,
                 )
+
+            # ── Dispatch ──────────────────────────────────────────────────────
+            client_method = getattr(self.client, method)
+            if method in {"get", "delete"}:
                 response = client_method(url, headers=final_headers, **extra)
-            elif method in {"post", "put"}:
+            else:
                 response = client_method(
                     url,
                     data=payload or {},
@@ -394,43 +503,42 @@ urlpatterns = original_patterns + [
                     headers=final_headers,
                     **extra,
                 )
-            content_type = response.headers.get("Content-Type", "").lower()
-            if json_content_type_str in content_type:
-                return response.json()
-            if (
-                plain_content_type_str in content_type
-                or html_content_type_str in content_type
-            ):
-                return response.content.decode(response.charset or "utf-8")
-            return response.content
 
-        return __call_api_client_get_response
+            return response  # raw Response — pass to mo_assert_api_response
+
+        return __call
 
     @pytest.fixture
     def _mo_assert_api_response(self, request):
         @typechecked
-        def __assert_api_response_by_name(
+        def __assert(
             *,
             api_url_name: str,
             response,
+            custom_response_type: Literal[
+                "json", "plain", "html", "binary", "others", None
+            ] = None,
             expected_status_code: int = 200,
         ):
             api_cls_attr = _get_api_cls_attributes(api_url_name)
-            response_type = getattr(api_cls_attr, "response_type", "json").lower()
+            response_type = (
+                custom_response_type or getattr(api_cls_attr, "response_type", "json")
+            ).lower()
+
             assert response is not None, f"[{api_url_name}] API returned no response"
             assert response.status_code == expected_status_code, (
                 f"[{api_url_name}] Expected HTTP {expected_status_code}, "
                 f"got {response.status_code}"
             )
+
             content_type = response.headers.get("Content-Type", "").lower()
             content = response.content or b""
 
-            # ================= 1. JSON =================
+            # ── JSON ──────────────────────────────────────────────────────────
             if response_type == "json":
                 assert (
                     "application/json" in content_type
-                ), f"[{api_url_name}] Expected JSON response, got Content-Type={content_type}"
-
+                ), f"[{api_url_name}] Expected JSON, got Content-Type={content_type}"
                 try:
                     body = response.json()
                 except Exception as e:
@@ -440,97 +548,90 @@ urlpatterns = original_patterns + [
                 assert isinstance(
                     body, dict
                 ), f"[{api_url_name}] JSON root must be an object"
-                assert (
-                    "status" in body
-                ), f"[{api_url_name}] Missing 'status' in JSON response"
-                assert (
-                    "message" in body
-                ), f"[{api_url_name}] Missing 'message' in JSON response"
-                assert (
-                    "data" in body
-                ), f"[{api_url_name}] Missing 'data' in JSON response"
+                for key in ("status", "message", "data"):
+                    assert (
+                        key in body
+                    ), f"[{api_url_name}] Missing '{key}' in JSON response"
                 assert (
                     body["status"] == HTTPStatus.OK
-                ), f"[{api_url_name}] JSON status must be 'ok', got {body['status']}"
-                message = body["message"]
+                ), f"[{api_url_name}] JSON status must be OK, got {body['status']}"
+                msg = body["message"]
                 assert isinstance(
-                    message, dict
+                    msg, dict
                 ), f"[{api_url_name}] 'message' must be an object"
-                required_message_keys = {
-                    "code",
-                    "title",
-                    "description",
-                    "category",
-                }
-                missing = required_message_keys - message.keys()
-                assert (
-                    not missing
-                ), f"[{api_url_name}] Missing keys in message block: {missing}"
-                assert isinstance(
-                    message["code"], str
-                ), f"[{api_url_name}] message.code must be a string"
-                assert isinstance(
-                    message["title"], str
-                ), f"[{api_url_name}] message.title must be a string"
-                assert isinstance(
-                    message["description"], str
-                ), f"[{api_url_name}] message.description must be a string"
-                assert isinstance(
-                    message["category"], str
-                ), f"[{api_url_name}] message.category must be a string"
+                for key in ("code", "title", "description", "category"):
+                    assert (
+                        key in msg
+                    ), f"[{api_url_name}] Missing '{key}' in message block"
+                    assert isinstance(
+                        msg[key], str
+                    ), f"[{api_url_name}] message.{key} must be a string"
                 assert isinstance(
                     body["data"], list
                 ), f"[{api_url_name}] 'data' must be a list"
 
-            # ================= 2. BINARY / FILE =================
-            elif response_type in {"binary", "file"}:
+            # ── Binary ───────────────────────────────────────────────────────
+            elif response_type == "binary":
                 assert content, f"[{api_url_name}] Binary response has no content"
                 assert isinstance(
                     content, (bytes, bytearray)
                 ), f"[{api_url_name}] Binary response must be bytes"
                 assert (
                     content_type
-                ), f"[{api_url_name}] Binary response missing Content-Type header"
+                ), f"[{api_url_name}] Binary response missing Content-Type"
 
-            # ================= 3. XML =================
-            elif response_type == "xml":
-                assert (
-                    "xml" in content_type
-                ), f"[{api_url_name}] Expected XML response, got Content-Type={content_type}"
-
-                text = content.decode(errors="ignore").strip()
-                assert text.startswith("<") and text.endswith(
-                    ">"
-                ), f"[{api_url_name}] Response does not look like valid XML"
-
-            # ================= 4. HTML =================
+            # ── HTML ──────────────────────────────────────────────────────────
             elif response_type == "html":
                 assert (
                     "text/html" in content_type
-                ), f"[{api_url_name}] Expected HTML response, got Content-Type={content_type}"
-
-                html = content.decode(errors="ignore").lower()
+                ), f"[{api_url_name}] Expected HTML, got Content-Type={content_type}"
                 assert (
-                    "<html" in html
+                    "<html" in content.decode(errors="ignore").lower()
                 ), f"[{api_url_name}] HTML response missing <html> tag"
 
-            # ================= 5. PLAIN =================
+            # ── Plain ─────────────────────────────────────────────────────────
             elif response_type == "plain":
                 assert (
                     "text/plain" in content_type
-                ), f"[{api_url_name}] Expected plain text response, got Content-Type={content_type}"
-                text = content.decode(errors="ignore")
+                ), f"[{api_url_name}] Expected plain text, got Content-Type={content_type}"
                 assert isinstance(
-                    text, str
+                    content.decode(errors="ignore"), str
                 ), f"[{api_url_name}] Plain response must be text"
 
-            # ================= 6. UNKNOWN =================
-            else:
-                raise AssertionError(
-                    f"[{api_url_name}] Unsupported response_type: {response_type}"
-                )
+            # ── Others — no content-type assertion ────────────────────────────
+            elif response_type == "others":
+                pass
 
-        return __assert_api_response_by_name
+        return __assert
+
+    @pytest.fixture
+    def _mo_create_user(self, request):
+        """
+        Creates a Django user using model_bakery.
+        If username is not provided, baker generates a random one.
+        """
+
+        def __create(username=None, password="password123", **extra_fields):
+            User = get_user_model()
+
+            # If a specific username is requested, check if it exists
+            if username:
+                existing = User.objects.filter(username=username).first()
+                if existing:
+                    return existing
+                extra_fields["username"] = username
+
+            # Use baker to create the user with default password logic
+            # This handles any other required fields your User model might have
+            user = baker.make(User, **extra_fields)
+
+            if password:
+                user.set_password(password)
+                user.save()
+
+            return user
+
+        return __create
 
 
 # ----------------
@@ -825,3 +926,172 @@ def _get_api_cls_attributes(api_url_name: str):
             f"URL '{api_url_name}' does not resolve to a class-based API view"
         )
     raise LookupError(f"API URL name not found: {api_url_name}")
+
+
+def _get_url_pattern_named_groups(api_url_name: str) -> dict[str, str]:
+    """
+    Walk the resolver tree and return a dict of {group_name: converter_type}
+    for every named capture group in the URL pattern matching *api_url_name*.
+
+    converter_type is a string like 'int', 'uuid', 'str', 'slug', 'path'.
+    Returns {} when the URL has no named groups or cannot be found.
+    """
+    import re
+
+    resolver = get_resolver()
+
+    def _search(patterns, name):
+        for pattern in patterns:
+            # Recurse into included url confs
+            if hasattr(pattern, "url_patterns"):
+                result = _search(pattern.url_patterns, name)
+                if result is not None:
+                    return result
+            if getattr(pattern, "name", None) != name:
+                continue
+            # RoutePattern (path()) exposes _route; RegexPattern exposes _regex
+            route = getattr(pattern.pattern, "_route", None)
+            if route is not None:
+                # Extract <converter:name> or <name> tokens
+                groups = {}
+                for m in re.finditer(
+                    r"<(?:([a-zA-Z_][a-zA-Z0-9_]*):)?([a-zA-Z_][a-zA-Z0-9_]*)>", route
+                ):
+                    converter, group_name = m.group(1), m.group(2)
+                    groups[group_name] = converter or "str"
+                return groups
+            regex = getattr(pattern.pattern, "_regex", None)
+            if regex is not None:
+                # Named groups in regex: (?P<name>...)
+                groups = {gname: "str" for gname in re.compile(regex).groupindex}
+                return groups
+            return {}
+        return None
+
+    result = _search(resolver.url_patterns, api_url_name)
+    return result or {}
+
+
+def _warn_ansi(msg: str) -> None:
+    """Print a bright-yellow test-time notice (not an exception, not warnings.warn)."""
+    print(f"{_ANSI_YELLOW}[mo_test_api] WARNING — {msg}{_ANSI_RESET}")
+
+
+def _generate_for_type(tp, list_dict_count: int = 1, _field: str = "?") -> object:
+    """
+    Recursively generate a single test value for type annotation *tp*.
+    Prints a yellow warning and returns None for unrecognised types.
+    """
+    # ── None sentinel ────────────────────────────────────────────────────────
+    if tp is None or tp is type(None):
+        return None
+
+    # ── Primitives ───────────────────────────────────────────────────────────
+    if tp is str:
+        return f"test_{uuid.uuid4().hex[:6]}"
+    if tp is int:
+        return 1
+    if tp is float:
+        return 1.0
+    if tp is bool:
+        return True
+    if tp is bytes:
+        return b"test"
+    if tp is uuid.UUID:
+        return str(uuid.uuid4())
+
+    # ── Bare collections (no generic args) ───────────────────────────────────
+    if tp is list:
+        return []
+    if tp is dict:
+        return {}
+    if tp is tuple:
+        return ()
+    if tp is set:
+        return []  # JSON-serialisable
+
+    # ── typing generics ──────────────────────────────────────────────────────
+    origin = get_origin(tp)
+    args = get_args(tp)
+
+    if origin is typing.Literal:  # Literal[a, b, …]
+        return args[0]
+
+    if origin is typing.Union:  # Union / Optional
+        for arg in args:
+            if arg is not type(None):
+                return _generate_for_type(arg, list_dict_count, _field)
+        return None
+
+    if origin is list:  # List[X]
+        inner = args[0] if args else str
+        return [_generate_for_type(inner, list_dict_count, _field)]
+
+    if origin is set:  # Set[X]
+        inner = args[0] if args else str
+        return [_generate_for_type(inner, list_dict_count, _field)]
+
+    if origin is tuple:  # Tuple[X, Y, …]
+        if args:
+            return [_generate_for_type(a, list_dict_count, _field) for a in args]
+        return []
+
+    if origin is dict:  # Dict[K, V]
+        if len(args) == 2:
+            k = _generate_for_type(args[0], list_dict_count, _field)
+            v = _generate_for_type(args[1], list_dict_count, _field)
+            return {k: v}
+        return {}
+
+    # ── Schema dict  {field_name: type, …} ──────────────────────────────────
+    if isinstance(tp, dict):
+        return _build_payload_from_schema(tp, list_dict_count)
+
+    # ── Unrecognised ─────────────────────────────────────────────────────────
+    _warn_ansi(
+        f"Could not generate value for field '{_field}' "
+        f"(unrecognised type: {tp!r}). "
+        f"Value set to None — pass custom_payload if this causes failures."
+    )
+    return None
+
+
+def _build_payload_from_schema(
+    schema: list | dict,
+    list_dict_count: int = 1,
+) -> list | dict:
+    """
+    Build a test payload from a payload_schema declaration.
+
+    Shapes:
+      dict[str, type]         →  single dict, one value per field
+      list[ dict[str, type] ] →  list of `list_dict_count` generated dicts
+      list[ type ]            →  single-item list of that type
+    """
+    if isinstance(schema, list):
+        if not schema:
+            return []
+        inner = schema[0]
+        # list containing a field-schema dict  →  repeat list_dict_count times
+        if isinstance(inner, dict) and all(isinstance(k, str) for k in inner):
+            return [
+                {
+                    field: _generate_for_type(tp, list_dict_count, field)
+                    for field, tp in inner.items()
+                }
+                for _ in range(list_dict_count)
+            ]
+        # list containing a plain type
+        return [_generate_for_type(inner, list_dict_count, "<list_item>")]
+
+    if isinstance(schema, dict):
+        return {
+            field: _generate_for_type(tp, list_dict_count, field)
+            for field, tp in schema.items()
+        }
+
+    _warn_ansi(
+        f"payload_schema has unexpected shape ({type(schema).__name__}). "
+        f"Sending empty dict — pass custom_payload for accurate results."
+    )
+    return {}

@@ -5,7 +5,7 @@ from django.apps import apps
 from django.conf import settings
 from django.db import models
 from django.db.models import ForeignKey
-from ...components.tdd_kit import MindoffTestCase
+from ....components.tdd_kit import MindoffTestCase
 
 # ------------------------
 # ⚓ CONSTANTS
@@ -449,7 +449,7 @@ class TestMockModel(MindoffTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestMockModelDfs(MindoffTestCase):
+class TestMockModelFrms(MindoffTestCase):
     # ---------------- Acceptance ----------------
     @pytest.mark.parametrize(
         "model_info, counts, expected_df_counts",
@@ -727,7 +727,7 @@ class TestMockModelDfs(MindoffTestCase):
             ),
         ],
     )
-    def test_mock_model_dfs_acceptance(
+    def test_mock_model_frms_acceptance(
         self,
         model_info,
         counts,
@@ -737,7 +737,7 @@ class TestMockModelDfs(MindoffTestCase):
         modify_rows,
     ):
         models_list = self._create_models(model_info)
-        df_dict = self.mo_mock_model_dfs(
+        df_dict = self.mo_mock_model_frms(
             models=models_list,
             exclude_columns=exclude_columns,
             modify=modify_rows,
@@ -781,7 +781,7 @@ class TestMockModelDfs(MindoffTestCase):
             ),
         ],
     )
-    def test_mock_model_dfs_rejections(
+    def test_mock_model_frms_rejections(
         self, exclude_columns, modify_rows, expected_error
     ):
         models_list = self._create_models(
@@ -790,7 +790,7 @@ class TestMockModelDfs(MindoffTestCase):
             ]
         )
         with pytest.raises(expected_error):
-            self.mo_mock_model_dfs(
+            self.mo_mock_model_frms(
                 models=models_list, exclude_columns=exclude_columns, modify=modify_rows
             )
 
