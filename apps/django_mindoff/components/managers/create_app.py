@@ -64,6 +64,7 @@ class DjangoAppCreator:
         with open(urls_path, "w") as f:
             f.write(
                 "from django.urls import path\n"
+                "from django.views.decorators.csrf import csrf_exempt\n"
                 "from . import views\n\n"
                 "urlpatterns = [\n"
                 "# Add Url Patterns here\n"

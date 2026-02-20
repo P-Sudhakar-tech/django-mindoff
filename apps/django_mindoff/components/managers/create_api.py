@@ -170,7 +170,7 @@ class DjangoApiCreator:
         Template placeholders replaced:
           SampleRouterClassName        → self.api_router_class_name  (class)
           sample_router_function_name  → self.api_router_name        (instance)
-          {{VERSION_MAP}}              → "    1: <ApiClass>,"
+          {{{{__dict__}}}}              → "    1: <ApiClass>,"
           {{API_HUMAN_NAME}}           → self.api_human_name
 
         Existence check uses the instance name since that is the unique
@@ -197,7 +197,7 @@ class DjangoApiCreator:
             "sample_router_function_name", self.api_router_name
         )
         version_map_entry = f"        1: {self.api_class_name},"
-        router_code = router_code.replace("{{VERSION_MAP}}", version_map_entry)
+        router_code = router_code.replace("{{__dict__}}", version_map_entry)
         router_code = router_code.replace("{{API_HUMAN_NAME}}", self.api_human_name)
 
         router_import_lines, router_code_lines = self._extract_imports_and_code(
@@ -401,7 +401,7 @@ class DjangoApiCreator:
                 norm_url, existing_names, existing_names_lower
             )
             insert_lines.append(
-                f"    path('{norm_url}', views.{self.api_router_name}, name='{route_name}'),"
+                f"    path('{norm_url}', csrf_exempt(views.{self.api_router_name}), name='{route_name}'),"
             )
 
         new_text = pattern.sub(r"\1" + "\n".join(insert_lines) + r"\n\2", text)

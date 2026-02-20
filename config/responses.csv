@@ -11,6 +11,7 @@ API_RATE_LIMITED,Service Limit Reached,Service request limit exceeded. Please tr
 PAYLOAD_NOT_ALLOWED,Request Not Accepted,This request does not allow a payload.,400
 PAYLOAD_TOO_LARGE,Request Too Large,The request size exceeds the allowed limit,400
 INVALID_PAYLOAD,Invalid Payload,Payload does not match the accepted format.,400
+INVALID_API_VERSION,Invalid API Version,Given API version does not exist for this endpoint.,404
 SUCCESS,Success,Operation completed successfully.,200
 CREATED,Successfully Created,Information have been saved successfully.,200
 UPDATED,Successfully Updated,Information have been updated successfully.,200

@@ -1,22 +1,20 @@
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from django_mindoff.components.response_kit import mo_response_kit
 
 
 class SampleRouterClassName:
-    VERSION_MAP = {{{VERSION_MAP}}}
+    VERSION_MAP = {{{__dict__}}}
 
     def __call__(self, request, *args, **kwargs):
         version = kwargs.get("version") or 1
         view_class = self.VERSION_MAP.get(version)
 
         if view_class is None:
-            return JsonResponse(
-                {
-                    "detail": f"API version '{version}' does not exist for this endpoint.",
-                    "available_versions": list(self.VERSION_MAP.keys()),
-                },
-                status=404,
+            mo_response_kit.json_response(
+                code="INVALID_API_VERSION",
+                category="danger",
+                data={"available_versions": list(self.VERSION_MAP.keys())},
             )
 
         use_cache = getattr(settings, "MINDOFF_USE_VIEW_CACHE", False)
@@ -29,4 +27,4 @@ class SampleRouterClassName:
         return self._view_cache[version](request, *args, **kwargs)
 
 
-sample_router_function_name = csrf_exempt(SampleRouterClassName())
+sample_router_function_name = SampleRouterClassName()

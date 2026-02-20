@@ -401,7 +401,7 @@ class DjangoApiCreator:
                 norm_url, existing_names, existing_names_lower
             )
             insert_lines.append(
-                f"    path('{norm_url}', views.{self.api_router_name}, name='{route_name}'),"
+                f"    path('{norm_url}', csrf_exempt(views.{self.api_router_name}), name='{route_name}'),"
             )
 
         new_text = pattern.sub(r"\1" + "\n".join(insert_lines) + r"\n\2", text)
