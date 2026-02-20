@@ -85,7 +85,7 @@ def get_exact_traceback(*, skip: int | None = None) -> str:
         return "".join(traceback.format_list(tb_summary))
 
 
-def get_api_class_from_url_name(*, api_url_name: str):
+def get_api_class_from_url_name(*, api_url_name: str, version: int = 1):
     stack = list(get_resolver().url_patterns)
     while stack:
         pattern = stack.pop()
@@ -97,12 +97,29 @@ def get_api_class_from_url_name(*, api_url_name: str):
             view_class = getattr(callback, "view_class", None)
             if view_class:
                 return view_class
-            raise TypeError(f"URL '{api_url_name}' is not a class-based view")
+            version_map = getattr(callback, "VERSION_MAP", None)
+            if version_map is not None:
+                if not version_map:
+                    raise TypeError(
+                        f"URL '{api_url_name}' resolves to a router with an "
+                        f"empty VERSION_MAP."
+                    )
+                if version not in version_map:
+                    raise KeyError(
+                        f"Version {version} is not registered for '{api_url_name}'. "
+                        f"Available versions: {sorted(version_map.keys())}"
+                    )
+                return version_map[version]
+            raise TypeError(
+                f"URL '{api_url_name}' is not a class-based view or a "
+                f"version-router instance. The callback has neither a "
+                f"'view_class' nor a 'VERSION_MAP' attribute."
+            )
     raise LookupError(f"No URL found with name '{api_url_name}'")
 
 
-def get_api_class_attributes(*, api_url_name: str) -> dict:
-    api_cls = get_api_class_from_url_name(api_url_name=api_url_name)
+def get_api_class_attributes(*, api_url_name: str, version: int = 1) -> dict:
+    api_cls = get_api_class_from_url_name(api_url_name=api_url_name, version=version)
     attrs = {}
     for cls in reversed(api_cls.__mro__):
         for name, value in vars(cls).items():
