@@ -97,7 +97,9 @@ class DjangoAppCreator:
             f.truncate()
 
     def _setup_tests_folder(self):
-        print("[ACTION] Creating 'tests' folder with __init__.py.")
+        print(
+            "[ACTION] Creating 'tests', 'components' and 'apis' folder with __init__.py."
+        )
         tests_py = os.path.join(self.app_dir, "tests.py")
         admin_py = os.path.join(self.app_dir, "admin.py")
         if os.path.exists(tests_py):
@@ -107,6 +109,12 @@ class DjangoAppCreator:
         tests_folder = os.path.join(self.app_dir, "tests")
         os.makedirs(tests_folder, exist_ok=True)
         open(os.path.join(tests_folder, "__init__.py"), "w").close()
+        components_folder = os.path.join(self.app_dir, "components")
+        os.makedirs(components_folder, exist_ok=True)
+        open(os.path.join(components_folder, "__init__.py"), "w").close()
+        apis_folder = os.path.join(self.app_dir, "apis")
+        os.makedirs(apis_folder, exist_ok=True)
+        open(os.path.join(apis_folder, "__init__.py"), "w").close()
 
     def _update_settings(self):
         with open(self.settings_path, "r+") as f:

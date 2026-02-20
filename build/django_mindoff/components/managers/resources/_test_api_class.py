@@ -10,7 +10,7 @@ class TestSampleAPIView(MindoffTestCase):
     def test_acceptance_api_success(self):
         user: callable | None = self.mo_create_user()
         payload: dict | list | None = None
-        url_kwargs: dict | None = None
+        url_kwargs: dict | None = {"version": 1}
         query_params: dict | None = None
         headers: dict | None = None
         expected_status_code: int = 200

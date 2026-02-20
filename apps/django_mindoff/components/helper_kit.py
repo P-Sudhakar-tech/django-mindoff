@@ -86,6 +86,11 @@ def get_exact_traceback(*, skip: int | None = None) -> str:
 
 
 def get_api_class_from_url_name(*, api_url_name: str, version: int = 1):
+    def _unwrap_callback(callback):
+        while hasattr(callback, "__wrapped__"):
+            callback = callback.__wrapped__
+        return callback
+
     stack = list(get_resolver().url_patterns)
     while stack:
         pattern = stack.pop()
@@ -93,7 +98,7 @@ def get_api_class_from_url_name(*, api_url_name: str, version: int = 1):
             stack.extend(pattern.url_patterns)
             continue
         if isinstance(pattern, URLPattern) and pattern.name == api_url_name:
-            callback = pattern.callback
+            callback = _unwrap_callback(pattern.callback)
             view_class = getattr(callback, "view_class", None)
             if view_class:
                 return view_class

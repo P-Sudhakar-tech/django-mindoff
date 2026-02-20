@@ -331,35 +331,6 @@ urlpatterns = original_patterns + [
 
     @pytest.fixture
     def _mo_test_api(self, request):
-        """
-        Returns a callable that sends a request to the named API endpoint
-        and returns the **raw Response object**.
-
-        For versioned APIs (those backed by a version-router), ``version``
-        must be supplied inside ``url_kwargs``:
-
-            self.mo_test_api(
-                "inventory__create_inventory",
-                url_kwargs={"version": 1},
-            )
-
-        Omitting ``version`` for a versioned URL raises ``ValueError`` at
-        call time so the mistake is caught immediately rather than silently
-        dispatching to the wrong class.
-
-        Signature:
-            mo_test_api(
-                api_url_name,
-                *,
-                user=None,
-                headers=None,
-                payload=None,
-                url_kwargs=None,
-                query_params=None,
-                **extra,
-            ) -> Response
-        """
-
         @typechecked
         def __call(
             api_url_name: str,
@@ -374,11 +345,6 @@ urlpatterns = original_patterns + [
             from urllib.parse import urlencode
 
             resolved_url_kwargs = url_kwargs or {}
-
-            # ── Version resolution ────────────────────────────────────────────
-            # Detect whether this URL is backed by a version router by resolving
-            # the callback directly from the URL patterns tree (without reversing
-            # first, since version is a required kwarg for reversal).
             is_versioned = _is_versioned_url(api_url_name)
 
             if is_versioned:
@@ -388,27 +354,19 @@ urlpatterns = original_patterns + [
                         f"'version' must be provided in url_kwargs, "
                         f"e.g. url_kwargs={{'version': 1}}"
                     )
-                version: int = resolved_url_kwargs["version"]
+                version = int(resolved_url_kwargs["version"])
             else:
                 version = None
 
-            # ── Class attribute lookup (method, etc.) ─────────────────────────
             api_cls_attr = _get_api_cls_attributes(api_url_name, version=version)
             JSON_CT = "application/json"
 
-            # ── Method ───────────────────────────────────────────────────────
             method = getattr(api_cls_attr, "method", "get").lower()
-
-            # ── Build URL ─────────────────────────────────────────────────────
             url = reverse(api_url_name, kwargs=resolved_url_kwargs)
             if query_params:
                 url = f"{url}?{urlencode(query_params)}"
-
-            # ── Auth ──────────────────────────────────────────────────────────
             if user is not None:
                 self.client.force_authenticate(user=user)
-
-            # ── Headers ───────────────────────────────────────────────────────
             final_headers = {"Accept": JSON_CT}
             if headers:
                 final_headers.update(headers)
@@ -417,8 +375,6 @@ urlpatterns = original_patterns + [
                 and "Content-Type" not in final_headers
             ):
                 final_headers["Content-Type"] = JSON_CT
-
-            # ── Guard ─────────────────────────────────────────────────────────
             mo_validation_kit.ensure_in(
                 method, ["get", "post", "put", "patch", "delete"], is_exception=True
             )
@@ -972,14 +928,6 @@ def _apply_modify(idx, df, modify: List[dict]):
 
 
 def _is_versioned_url(api_url_name: str) -> bool:
-    """
-    Returns True if the URL name resolves to a version-router instance
-    (i.e. the callback carries a VERSION_MAP attribute).
-
-    Walks the resolver tree directly rather than calling reverse() because
-    versioned URLs require a version kwarg to reverse — this check must
-    happen before we know whether the caller provided one.
-    """
     stack = list(get_resolver().url_patterns)
     while stack:
         pattern = stack.pop()
@@ -987,7 +935,10 @@ def _is_versioned_url(api_url_name: str) -> bool:
             stack.extend(pattern.url_patterns)
             continue
         if isinstance(pattern, URLPattern) and pattern.name == api_url_name:
-            return hasattr(pattern.callback, "VERSION_MAP")
+            callback = pattern.callback
+            while hasattr(callback, "__wrapped__"):
+                callback = callback.__wrapped__
+            return hasattr(callback, "VERSION_MAP")
     return False
 
 
@@ -1000,6 +951,8 @@ def _get_api_cls_attributes(api_url_name: str, version: int | None = None):
             continue
         if isinstance(pattern, URLPattern) and pattern.name == api_url_name:
             callback = pattern.callback
+            while hasattr(callback, "__wrapped__"):
+                callback = callback.__wrapped__
             view_class = getattr(callback, "view_class", None)
             if view_class:
                 return view_class

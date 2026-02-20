@@ -1,14 +1,10 @@
-from django_mindoff.components.api_kit import mo_api_kit
+from django_mindoff.components.api_kit import MindoffAPIMixin
 from django_mindoff.components.response_kit import mo_response_kit
-from rest_framework.authentication import TokenAuthentication, BasicAuthentication
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from typing import Any, Dict, List, Union, Optional, Literal
 from django_mindoff.components.validation_kit import mo_validation_kit
-from django_mindoff.components.polars_kit import mo_polars_kit
-from django_mindoff.components.crud_kit import mo_crud_kit
+from typing import Any, Dict, List, Union, Optional, Literal
 
 
-class MindOffSampleAPI(mo_api_kit.MindoffAPIMixin):
+class MindOffSampleAPI(MindoffAPIMixin):
     # 1. API Identity
     api_url_name: str = "{{API_URL_NAME}}"
     api_name: str = "{{API_HUMAN_NAME}}"
@@ -27,11 +23,7 @@ class MindOffSampleAPI(mo_api_kit.MindoffAPIMixin):
     payload_schema: list | dict | None = None
     max_payload_size: int | float | None = 10  # in Megabytes(MB)
     max_payload_depth: int | None = 20
-    payload_validation: Literal["strict", "basic", None] = None
-
-    # 4. Response Rules
-    response_type: Literal["json", "plain", "html", "binary", "others"] = "json"
-    response_validation: bool = True
+    payload_validation: Literal["strict", "basic", None] = "strict"
 
     # 5. Usage Limits Per User
     api_request_limit: str | None = "30/m"

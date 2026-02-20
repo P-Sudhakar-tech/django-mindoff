@@ -71,6 +71,7 @@ class DjangoProjectCreator:
             "python-decouple",
             "pytest",
             "pytest-django",
+            "pytest-cov",
             "model-bakery",
             "Faker",
             "polars",

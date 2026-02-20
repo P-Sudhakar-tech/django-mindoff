@@ -1,17 +1,8 @@
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 
 class SampleRouterClassName:
-    """
-    Version router for the {{API_HUMAN_NAME}} API.
-
-    Maps the ``version`` URL kwarg to the appropriate versioned APIView class.
-    Registered in urls.py as an instance: ``SampleRouterClassName()``.
-
-    To add a new version, insert an entry into VERSION_MAP:
-        2: CreateInventoryV2APIView,
-    """
-
     VERSION_MAP = {{{VERSION_MAP}}}
 
     def __call__(self, request, *args, **kwargs):
@@ -27,7 +18,12 @@ class SampleRouterClassName:
                 status=404,
             )
 
-        return view_class.as_view()(request, *args, **kwargs)
+        if not hasattr(self, "_view_cache"):
+            self._view_cache = {}
+        if version not in self._view_cache:
+            self._view_cache[version] = view_class.as_view()
+
+        return self._view_cache[version](request, *args, **kwargs)
 
 
-sample_router_function_name = SampleRouterClassName()
+sample_router_function_name = csrf_exempt(SampleRouterClassName())
