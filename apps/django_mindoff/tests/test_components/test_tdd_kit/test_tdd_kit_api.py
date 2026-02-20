@@ -52,14 +52,22 @@ class TestMoTestApi(MindoffTestCase):
         _, mock = self._patched_call(
             _make_api_cls(method=method), method, payload=custom
         )
-        sent = mock.call_args.kwargs.get("data") or mock.call_args.args[1]
+        sent = (
+            mock.call_args.kwargs["data"]
+            if "data" in mock.call_args.kwargs
+            else mock.call_args.args[1]
+        )
         assert sent == custom
 
     @pytest.mark.parametrize("method", ["post", "put", "patch"])
     def test_mutation_methods_with_no_payload_send_empty_dict(self, method):
         """POST, PUT, PATCH with no payload provided → empty dict sent."""
         _, mock = self._patched_call(_make_api_cls(method=method), method)
-        sent = mock.call_args.kwargs.get("data") or mock.call_args.args[1]
+        sent = (
+            mock.call_args.kwargs["data"]
+            if "data" in mock.call_args.kwargs
+            else mock.call_args.args[1]
+        )
         assert sent == {}
 
     def test_url_kwargs_passed_to_reverse(self):

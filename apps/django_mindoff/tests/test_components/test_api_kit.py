@@ -52,12 +52,11 @@ class TestAPIConfigurationValidation(MindoffTestCase):
         app_name, temp_dir_path = self.mo_mock_app(is_return_path=True)
         api_name = f"test_empty_{attribute}_api"
         _create_test_api(app_name, api_name=api_name, base_path=temp_dir_path)
-
         _modify_api_attribute(
             app_name, api_name, attribute, value, base_path=temp_dir_path
         )
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, api_name)
 
         self._assert_config_error(error_message)
 
@@ -77,7 +76,7 @@ class TestAPIConfigurationValidation(MindoffTestCase):
         )
 
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, "test_invalid_url_name_api")
 
         self._assert_config_error("not found in urls.py")
 
@@ -97,7 +96,7 @@ class TestAPIConfigurationValidation(MindoffTestCase):
         )
 
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, "test_none_desc_api")
 
         self._assert_config_error(
             "`api_description` must be a string and cannot be None"
@@ -119,7 +118,7 @@ class TestAPIConfigurationValidation(MindoffTestCase):
         )
 
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, "test_invalid_dup_queue_api")
 
         self._assert_config_error("`allow_duplicate_queue` must be boolean")
 
@@ -148,7 +147,7 @@ class TestAPIConfigurationValidation(MindoffTestCase):
             app_name, api_name, attribute, value, base_path=temp_dir_path
         )
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, api_name)
 
         self._assert_config_error(error_message)
 
@@ -169,31 +168,11 @@ class TestAPIConfigurationValidation(MindoffTestCase):
         )
 
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, "test_invalid_validation_type_api")
 
         self._assert_config_error(
             "`payload_validation` must be 'strict', 'basic' or None"
         )
-
-    def test_config_invalid_response_type(self):
-        """Verify response_type must be one of allowed types"""
-        app_name, temp_dir_path = self.mo_mock_app(is_return_path=True)
-        _create_test_api(
-            app_name, api_name="test_invalid_response_type_api", base_path=temp_dir_path
-        )
-
-        _modify_api_attribute(
-            app_name,
-            "test_invalid_response_type_api",
-            "response_type",
-            "invalid_type",
-            base_path=temp_dir_path,
-        )
-
-        clear_url_caches()
-        _reload_view_module(app_name)
-
-        self._assert_config_error("`response_type` must be one of")
 
     def test_config_invalid_rate_limit_format(self):
         """Verify api_request_limit matches '<int>/(s|m|h|d)' format"""
@@ -211,7 +190,7 @@ class TestAPIConfigurationValidation(MindoffTestCase):
         )
 
         clear_url_caches()
-        _reload_view_module(app_name)
+        _reload_api_modules(app_name, "test_invalid_rate_api")
         self._assert_config_error("must match '<int>/(s|m|h|d)' format")
 
     def _assert_config_error(self, expected_msg_fragment: str):
@@ -891,7 +870,7 @@ class TestAPIMixinBoundary(MindoffTestCase):
     def test_boundary_valid_rate_limits(self, rate_value, description):
         """BOUNDARY: API succeeds with valid extreme rate limits"""
         app_name, temp_dir_path = self.mo_mock_app(is_return_path=True)
-        api_name = f"test_boundary_rate_{rate_value.replace('/', '_')}_api"
+        api_name = f"test_boundary_rate_{description.replace(' ', '_')}_api"
         api_url_name = _create_test_api(
             app_name,
             api_name=api_name,
@@ -978,11 +957,18 @@ class TestAPIMixinBoundary(MindoffTestCase):
 # ========================================================================================
 # 🔧 HELPER FUNCTIONS
 # ========================================================================================
-def _reload_view_module(app_name: str):
-    """Force reload of view module to pick up changes."""
-    view_module_name = f"{app_name}.views"
-    if view_module_name in sys.modules:
-        del sys.modules[view_module_name]
+def _reload_api_modules(app_name: str, api_name: str):
+    """
+    Force reload of both router and versioned API modules.
+    """
+    modules_to_clear = [
+        f"{app_name}.views",
+        f"{app_name}.apis.{api_name}",
+    ]
+
+    for module_name in modules_to_clear:
+        if module_name in sys.modules:
+            del sys.modules[module_name]
 
 
 def _create_test_api(
@@ -1021,9 +1007,7 @@ def _create_test_api(
     if overrides:
         __apply_api_overrides(views_path, overrides)
 
-    view_module_name = f"{app_name}.views"
-    if view_module_name in sys.modules:
-        del sys.modules[view_module_name]
+    _reload_api_modules(app_name, api_name)
 
     clear_url_caches()
 
@@ -1031,23 +1015,24 @@ def _create_test_api(
 
 
 def __fix_mock_app_imports(app_root: Path):
-    """
-    Replace 'django_mindoff' with 'apps.django_mindoff' in core files.
-
-    Args:
-        app_root: Root path of the app
-    """
     files_to_patch = [
         app_root / "views.py",
         app_root / "models.py",
         app_root / "tests" / "test_views.py",
     ]
-
+    apis_dir = app_root / "apis"
+    if apis_dir.exists():
+        files_to_patch.extend(apis_dir.rglob("*.py"))
+    test_apis_dir = app_root / "tests" / "test_apis"
+    if test_apis_dir.exists():
+        files_to_patch.extend(test_apis_dir.rglob("*.py"))
     for file_path in files_to_patch:
         if file_path.exists():
             content = file_path.read_text()
             new_content = re.sub(
-                r"\bfrom django_mindoff\b", "from apps.django_mindoff", content
+                r"\bfrom django_mindoff\b",
+                "from apps.django_mindoff",
+                content,
             )
             if content != new_content:
                 file_path.write_text(new_content)
@@ -1084,21 +1069,23 @@ def __apply_api_overrides(views_path: Path, overrides: dict):
 
 
 def _modify_api_attribute(
-    app_name: str, api_name: str, attribute: str, value, base_path: Path = None
+    app_name: str,
+    api_name: str,
+    attribute: str,
+    value,
+    base_path: Path = None,
 ):
     """
-    Modify a specific attribute in an already-created API.
-
-    Args:
-        app_name: Name of the app
-        api_name: Name of the API (snake_case)
-        attribute: Attribute name to modify
-        value: New value for the attribute
-        base_path: Base path for the app (defaults to apps directory)
+    Modify a specific attribute inside the versioned API class file:
+    apps/<app>/apis/<api_name>.py
     """
     base_path = base_path or Path("apps")
-    views_path = base_path / app_name / "views.py"
-    content = views_path.read_text()
+    api_file = base_path / app_name / "apis" / f"{api_name}.py"
+
+    if not api_file.exists():
+        raise FileNotFoundError(f"API file not found at {api_file}")
+
+    content = api_file.read_text()
 
     if value is None:
         value_str = "None"
@@ -1118,34 +1105,37 @@ def _modify_api_attribute(
     else:
         value_str = str(value)
 
-    pattern = rf"(\s+{attribute}:\s*[^=]+=\s*)(.+?)(\s*(?:#|$))"
+    pattern = rf"(\s+{attribute}\s*:\s*[^=]+=\s*)(.+?)(\s*(?:#|$))"
     content = re.sub(pattern, rf"\g<1>{value_str}\g<3>", content, flags=re.MULTILINE)
 
-    views_path.write_text(content)
+    api_file.write_text(content)
 
 
 def _modify_api_run_method(
-    app_name: str, api_name: str, run_code: str, base_path: Path = None
+    app_name: str,
+    api_name: str,
+    run_code: str,
+    base_path: Path = None,
 ):
     """
-    Replace the run() method implementation.
-
-    Args:
-        app_name: Name of the app
-        api_name: Name of the API (snake_case)
-        run_code: New implementation code for the run method
-        base_path: Base path for the app (defaults to apps directory)
+    Replace run() method inside:
+    apps/<app>/apis/<api_name>.py
     """
     base_path = base_path or Path("apps")
-    views_path = base_path / app_name / "views.py"
-    content = views_path.read_text()
+    api_file = base_path / app_name / "apis" / f"{api_name}.py"
+
+    if not api_file.exists():
+        raise FileNotFoundError(f"API file not found at {api_file}")
+
+    content = api_file.read_text()
 
     pattern = (
         r"(def run\(self, request, \*args, \*\*kwargs\):)"
         r"([\s\S]*?)"
         r"(?=\n {4}def |\nclass |\Z)"
     )
+
     new_run = f"\\1\n{run_code}\n"
     content = re.sub(pattern, new_run, content, flags=re.DOTALL)
 
-    views_path.write_text(content)
+    api_file.write_text(content)

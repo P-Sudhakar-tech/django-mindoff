@@ -187,7 +187,7 @@ class DjangoApiCreator:
         app_dir = self.base_path / self.original_app_name
         view_path = app_dir / "views.py"
 
-        v1_import = f"from .api.{self.raw_api} import {self.api_class_name}"
+        v1_import = f"from .apis.{self.raw_api} import {self.api_class_name}"
 
         router_template = VERSION_ROUTER_TEMPLATE_PATH.read_text()
         router_code = router_template.replace(
