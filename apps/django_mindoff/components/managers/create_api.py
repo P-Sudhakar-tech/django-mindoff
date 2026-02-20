@@ -5,6 +5,9 @@ from ..helper_kit import mo_helper_kit
 
 TEMPLATE_PATH = Path(__file__).parent / "resources" / "_api_class.py"
 TEST_TEMPLATE_PATH = Path(__file__).parent / "resources" / "_test_api_class.py"
+VERSION_ROUTER_TEMPLATE_PATH = (
+    Path(__file__).parent / "resources" / "_api_router_func.py"
+)
 
 
 class DjangoApiCreator:
@@ -19,7 +22,13 @@ class DjangoApiCreator:
         self.normalized_app_name = None
         self.app = None
         self.api_function_name = None
-        self.api_class_name = None
+        self.api_class_name = None  # e.g. CreateInventoryV1APIView
+        self.api_router_name = None  # e.g. create_inventory_api  (used in views.py)
+        self.api_human_name = None
+
+    # ------------------------------------------------------------------
+    # Normalisation helpers
+    # ------------------------------------------------------------------
 
     def _normalize_app_name(self, dotted_path: str) -> str:
         if self.base_path != Path.cwd() / "apps":
@@ -39,10 +48,9 @@ class DjangoApiCreator:
             raise ValueError(
                 f"Invalid API name: '{raw}'. Only lowercase letters and underscores allowed."
             )
-
         snake = raw
         pascal = re.sub(r"(?:^|_)([a-z])", lambda m: m.group(1).upper(), snake)
-        class_name = pascal + "APIView"
+        class_name = pascal + "V1APIView"
         return snake, class_name
 
     def _normalize_url(self, url: str) -> str:
@@ -51,7 +59,6 @@ class DjangoApiCreator:
             url = url[1:]
         if not url.endswith("/"):
             url += "/"
-        # Validate pattern parameters (e.g., <int:name>)
         if re.search(r"<[^>:]+>", url):
             raise ValueError(
                 f"Invalid URL pattern '{url}': use format like <int:id>, <slug:name>"
@@ -60,72 +67,174 @@ class DjangoApiCreator:
             raise ValueError(f"Invalid characters in URL pattern: '{url}'")
         return url
 
+    # ------------------------------------------------------------------
+    # Input parsing
+    # ------------------------------------------------------------------
+
     def _parse_input(self):
         try:
             self.original_app_name, self.raw_api = self.api_path.split("/")
         except ValueError:
             raise ValueError("API path must be in format <app_name>/<api_name>")
+
         self.normalized_app_name = self._normalize_app_name(self.original_app_name)
         self.app = self.normalized_app_name
-        words = self.raw_api.split("_")
+
+        _, self.api_class_name = self._normalize_api_name(self.raw_api)
         self.api_function_name = self.raw_api
-        pascal = "".join(w.capitalize() for w in words)
-        self.api_class_name = f"{pascal}APIView"
+
+        words = self.raw_api.split("_")
         self.api_human_name = " ".join(w.capitalize() for w in words)
 
-    def _copy_template_and_replace(self):
-        app_dir = self.base_path / self.original_app_name
-        view_path = app_dir / "views.py"
+        # The version-router function name written into views.py
+        # e.g.  raw_api="create_inventory"  →  router="create_inventory_api"
+        self.api_router_name = f"{self.raw_api}_api"
+
+    # ------------------------------------------------------------------
+    # Step 1 – write versioned class into apps/<app>/api/<api_name>.py
+    # ------------------------------------------------------------------
+
+    def _write_versioned_api_file(self):
+        """
+        Creates (or appends to) apps/<app>/api/<api_name>.py.
+
+        - If the file does not exist              → create it with the V1 class.
+        - If the file exists but class is absent  → append the V1 class.
+        - If the file exists and class is present → raise FileExistsError.
+        """
         if not TEMPLATE_PATH.exists():
             raise FileNotFoundError(f"API template not found at {TEMPLATE_PATH}")
 
+        api_dir = self.base_path / self.original_app_name / "api"
+        api_file = api_dir / f"{self.raw_api}.py"
+
         content = TEMPLATE_PATH.read_text()
-        replaced = re.sub(r"class\s+\w+\s*\(", f"class {self.api_class_name}(", content)
-        if not replaced or f"class {self.api_class_name}(" not in replaced:
-            raise ValueError("Could not replace class name in template.")
-        replaced = replaced.replace(
-            "{{API_HUMAN_NAME}}",
-            self.api_human_name,
+
+        # Replace class name → V1 variant
+        replaced = re.sub(
+            r"class\s+\w+\s*\(",
+            f"class {self.api_class_name}(",
+            content,
         )
+        if f"class {self.api_class_name}(" not in replaced:
+            raise ValueError("Could not replace class name in template.")
+
+        replaced = replaced.replace("{{API_HUMAN_NAME}}", self.api_human_name)
         if "{{API_HUMAN_NAME}}" in replaced:
             raise ValueError("Template is missing API_HUMAN_NAME replacement.")
+
         api_url_name = f"{self.original_app_name}__{self.api_function_name}"
-        replaced = replaced.replace(
-            "{{API_URL_NAME}}",
-            api_url_name,
-        )
+        replaced = replaced.replace("{{API_URL_NAME}}", api_url_name)
+
         import_lines, code_lines = self._extract_imports_and_code(replaced)
 
-        if view_path.exists():
-            original = view_path.read_text()
+        if api_file.exists():
+            original = api_file.read_text()
             if f"class {self.api_class_name}(" in original:
                 raise FileExistsError(
-                    f"API '{self.raw_api}' already exists under app '{self.original_app_name}'"
+                    f"API '{self.raw_api}' (version 1) already exists in "
+                    f"'{api_file}'. Use the upgrade command to add a new version."
                 )
+            # File exists but this class is not yet in it – append
             existing_lines = set(original.splitlines())
-            missing_imports = [
-                line for line in import_lines if line not in existing_lines
-            ]
-            final_lines = original.rstrip().splitlines()
-            insert_at = 0
-            for i, line in enumerate(final_lines):
-                if line.strip() and not (
-                    line.strip().startswith("import") or line.strip().startswith("from")
-                ):
-                    insert_at = i
-                    break
+            missing_imports = [l for l in import_lines if l not in existing_lines]
 
-            new_view_content = (
+            final_lines = original.rstrip().splitlines()
+            insert_at = self._find_import_insert_point(final_lines)
+
+            new_content = (
                 final_lines[:insert_at]
                 + missing_imports
                 + final_lines[insert_at:]
                 + ["", *code_lines, ""]
             )
-            view_path.write_text("\n".join(new_view_content))
+            api_file.write_text("\n".join(new_content))
         else:
-            view_path.parent.mkdir(parents=True, exist_ok=True)
+            api_dir.mkdir(parents=True, exist_ok=True)
+            # Ensure the api directory is a package
+            init_file = api_dir / "__init__.py"
+            if not init_file.exists():
+                init_file.write_text("")
+
             full_content = "\n".join(import_lines + ["", *code_lines, ""])
+            api_file.write_text(full_content)
+
+    # ------------------------------------------------------------------
+    # Step 2 – write / update the version-router function in views.py
+    # ------------------------------------------------------------------
+
+    def _write_version_router_to_views(self):
+        """
+        Ensures views.py contains:
+          1. An import of the V1 class from the api sub-module.
+          2. A version-router function (copied from _api_version_router.py template)
+             that maps version kwargs to the appropriate APIView class.
+
+        - If the router function already exists → raise FileExistsError.
+        - If the import already exists          → skip adding it again.
+        """
+        if not VERSION_ROUTER_TEMPLATE_PATH.exists():
+            raise FileNotFoundError(
+                f"Version-router template not found at {VERSION_ROUTER_TEMPLATE_PATH}"
+            )
+
+        app_dir = self.base_path / self.original_app_name
+        view_path = app_dir / "views.py"
+
+        # --- Build the import line for the V1 class ---
+        v1_import = f"from .api.{self.raw_api} import {self.api_class_name}"
+
+        # --- Build the router function from the template ---
+        router_template = VERSION_ROUTER_TEMPLATE_PATH.read_text()
+
+        # Replace function name placeholder
+        router_code = router_template.replace(
+            "sample_router_function_name", self.api_router_name
+        )
+        # Replace the version-map placeholder
+        version_map_entry = f"    1: {self.api_class_name},"
+        router_code = router_code.replace("{{VERSION_MAP}}", version_map_entry)
+        # Replace human name for any docstring
+        router_code = router_code.replace("{{API_HUMAN_NAME}}", self.api_human_name)
+
+        router_import_lines, router_code_lines = self._extract_imports_and_code(
+            router_code
+        )
+
+        if view_path.exists():
+            original = view_path.read_text()
+
+            if f"def {self.api_router_name}(" in original:
+                raise FileExistsError(
+                    f"Version router '{self.api_router_name}' already exists in views.py."
+                )
+
+            existing_lines = set(original.splitlines())
+
+            # Collect all missing imports (v1 class import + any from router template)
+            all_new_imports = [v1_import] + router_import_lines
+            missing_imports = [l for l in all_new_imports if l not in existing_lines]
+
+            final_lines = original.rstrip().splitlines()
+            insert_at = self._find_import_insert_point(final_lines)
+
+            new_content = (
+                final_lines[:insert_at]
+                + missing_imports
+                + final_lines[insert_at:]
+                + ["", *router_code_lines, ""]
+            )
+            view_path.write_text("\n".join(new_content))
+        else:
+            # Brand-new views.py
+            view_path.parent.mkdir(parents=True, exist_ok=True)
+            all_imports = [v1_import] + router_import_lines
+            full_content = "\n".join(all_imports + ["", *router_code_lines, ""])
             view_path.write_text(full_content)
+
+    # ------------------------------------------------------------------
+    # Step 3 – write test template (unchanged logic, class name updated)
+    # ------------------------------------------------------------------
 
     def _copy_test_template_and_replace(self):
         tests_dir = self.base_path / self.original_app_name / "tests"
@@ -139,55 +248,40 @@ class DjangoApiCreator:
             f"class Test{self.api_class_name}(",
             content,
         )
-        if not replaced or f"class Test{self.api_class_name}(" not in replaced:
+        if f"class Test{self.api_class_name}(" not in replaced:
             raise ValueError("Could not replace test class name in template.")
 
         api_url_name = f"{self.original_app_name}__{self.api_function_name}"
-        replaced = replaced.replace(
-            "{{API_URL_NAME}}",
-            api_url_name,
-        )
+        replaced = replaced.replace("{{API_URL_NAME}}", api_url_name)
+
         import_lines, code_lines = self._extract_imports_and_code(replaced)
 
         if test_path.exists():
             original = test_path.read_text()
             if f"class Test{self.api_class_name}(" in original:
                 raise FileExistsError(
-                    f"Test for API '{self.raw_api}' already exists under app '{self.original_app_name}'"
+                    f"Test for API '{self.raw_api}' already exists under app "
+                    f"'{self.original_app_name}'"
                 )
             existing_lines = set(original.splitlines())
-            missing_imports = [
-                line for line in import_lines if line not in existing_lines
-            ]
+            missing_imports = [l for l in import_lines if l not in existing_lines]
             final_lines = original.rstrip().splitlines()
-            insert_at = 0
-            for i, line in enumerate(final_lines):
-                if line.strip() and not (
-                    line.strip().startswith("import") or line.strip().startswith("from")
-                ):
-                    insert_at = i
-                    break
-            new_test_content = (
+            insert_at = self._find_import_insert_point(final_lines)
+            new_content = (
                 final_lines[:insert_at]
                 + missing_imports
                 + final_lines[insert_at:]
                 + ["", *code_lines, ""]
             )
-            test_path.write_text("\n".join(new_test_content))
+            test_path.write_text("\n".join(new_content))
         else:
             tests_dir.mkdir(parents=True, exist_ok=True)
             full_content = "\n".join(import_lines + ["", *code_lines, ""])
             test_path.write_text(full_content)
 
-    def _extract_imports_and_code(self, content: str):
-        import_lines = []
-        code_lines = []
-        for line in content.strip().splitlines():
-            if line.strip().startswith("import ") or line.strip().startswith("from "):
-                import_lines.append(line.strip())
-            else:
-                code_lines.append(line)
-        return import_lines, code_lines
+    # ------------------------------------------------------------------
+    # Step 4 – register URL pointing to the router function
+    # ------------------------------------------------------------------
 
     def _update_urls(self):
         urls_path = self.base_path / self.original_app_name / "urls.py"
@@ -197,10 +291,11 @@ class DjangoApiCreator:
         text = urls_path.read_text()
         existing_patterns = set(re.findall(r"path\(\s*['\"](.+?)['\"]", text))
         existing_names = set(re.findall(r"name=['\"](.+?)['\"]", text))
-        existing_names_lower = {name.lower() for name in existing_names}
+        existing_names_lower = {n.lower() for n in existing_names}
 
         if not self.url_paths:
-            default_url = f"{self.api_function_name}/"
+            # Default versioned URL: v<version>/<api_name>/
+            default_url = f"v<int:version>/{self.api_function_name}/"
             self.url_paths = [default_url]
 
         pattern = re.compile(r"(urlpatterns\s*=\s*\[.*?)(\])", re.DOTALL)
@@ -211,7 +306,6 @@ class DjangoApiCreator:
         insert_lines = []
         for url in self.url_paths:
             norm_url = self._normalize_url(url)
-
             if norm_url in existing_patterns:
                 raise FileExistsError(
                     f"URL pattern '{norm_url}' already exists in urls.py"
@@ -219,8 +313,9 @@ class DjangoApiCreator:
             route_name = self._generate_route_name(
                 norm_url, existing_names, existing_names_lower
             )
+            # URLs point to the version-router *function* (not .as_view())
             insert_lines.append(
-                f"    path('{norm_url}', views.{self.api_class_name}.as_view(), name='{route_name}'),"
+                f"    path('{norm_url}', views.{self.api_router_name}, name='{route_name}'),"
             )
 
         new_text = pattern.sub(r"\1" + "\n".join(insert_lines) + r"\n\2", text)
@@ -229,23 +324,52 @@ class DjangoApiCreator:
     def _generate_route_name(
         self, url: str, existing_names: set[str], existing_names_lower: set[str]
     ) -> str:
-        # ✅ Always use app_name__api_name (ignore url details)
         route_name = f"{self.original_app_name}__{self.api_function_name}"
-
         if route_name in existing_names:
             raise FileExistsError(f"URL name '{route_name}' already exists in urls.py")
         if route_name.lower() in existing_names_lower:
             print(
-                f"[WARNING] Route name '{route_name}' may collide with an existing name if case is ignored."
+                f"[WARNING] Route name '{route_name}' may collide with an existing "
+                f"name if case is ignored."
             )
         return route_name
+
+    # ------------------------------------------------------------------
+    # Utility
+    # ------------------------------------------------------------------
+
+    def _extract_imports_and_code(self, content: str):
+        import_lines = []
+        code_lines = []
+        for line in content.strip().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("import ") or stripped.startswith("from "):
+                import_lines.append(stripped)
+            else:
+                code_lines.append(line)
+        return import_lines, code_lines
+
+    def _find_import_insert_point(self, lines: list[str]) -> int:
+        """Return the index of the first non-import, non-blank line."""
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped and not (
+                stripped.startswith("import") or stripped.startswith("from")
+            ):
+                return i
+        return 0
+
+    # ------------------------------------------------------------------
+    # Entry point
+    # ------------------------------------------------------------------
 
     @mo_helper_kit.file_guardian
     def run(self):
         self._parse_input()
-        self._copy_template_and_replace()
-        self._copy_test_template_and_replace()
-        self._update_urls()
+        self._write_versioned_api_file()  # apps/<app>/api/<api_name>.py
+        self._write_version_router_to_views()  # apps/<app>/views.py
+        self._copy_test_template_and_replace()  # apps/<app>/tests/test_views.py
+        self._update_urls()  # apps/<app>/urls.py
 
 
 # ======== CLI HOOK ========
@@ -254,13 +378,17 @@ def register_subcommand(subparsers):
         DjangoApiCreator(api_path=args.api_path, url_paths=args.url).run()
 
     parser = subparsers.add_parser(
-        "createapi", help="Create Django API view class and route"
+        "createapi", help="Create versioned Django API view class and route"
     )
     parser.add_argument("api_path", help="API path in format <app_name>/<api_name>")
     parser.add_argument(
         "--url",
         action="extend",
         nargs="+",
-        help="One or more URL patterns (e.g., 'api/<int:user_id>/')",
+        help=(
+            "One or more URL patterns. "
+            "Defaults to 'v<int:version>/<api_name>/' if omitted. "
+            "Example: 'v<int:version>/inventory/create/'"
+        ),
     )
     parser.set_defaults(handler=_create_api)
