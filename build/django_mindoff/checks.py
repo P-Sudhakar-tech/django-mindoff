@@ -2,51 +2,64 @@ from django.core.checks import Error, register
 from django.urls import get_resolver
 from django.urls.resolvers import URLResolver, URLPattern
 from django.core.exceptions import ImproperlyConfigured
+from django.apps import apps as django_apps
 from inspect import isclass
+import inspect
+import importlib
+import pkgutil
+import sys
+
 from .components.api_kit import MindoffAPIMixin
 
 
 @register()
 def check_mindoff_api_configs(app_configs, **kwargs):
     errors = []
-    resolver = get_resolver()
-    try:
-        url_patterns = resolver.url_patterns
-        flat_patterns = _flatten_patterns(url_patterns)
-    except Exception:
-        # If URLs aren't ready yet, skip this check to avoid circularity
-        return []
 
-    for pattern in flat_patterns:
-        callback = getattr(pattern, "callback", None)
-        if not callback:
+    for app_config in django_apps.get_app_configs():
+        apis_dir = (
+            app_config.path and __import__("pathlib").Path(app_config.path) / "apis"
+        )
+        if not apis_dir or not apis_dir.is_dir():
             continue
 
-        view_class = getattr(callback, "view_class", None)
-        if isclass(view_class) and issubclass(view_class, MindoffAPIMixin):
+        # Walk every .py file under apis/ and import it fresh
+        package_name = f"{app_config.name}.apis"
+        for finder, module_name, _ in pkgutil.walk_packages(
+            path=[str(apis_dir)],
+            prefix=f"{package_name}.",
+            onerror=lambda name: None,
+        ):
+            # Force a fresh import — evict any cached version first
+            sys.modules.pop(module_name, None)
             try:
-                instance = view_class()
-                instance.validate_api_configuration()
-            except Exception as exc:
-                errors.append(
-                    Error(
-                        f"API Configuration Error in {view_class.__name__}: {str(exc)}",
-                        hint="Check the validate_api_configuration method in your view.",
-                        obj=view_class,
-                        id=f"django_mindoff.{exc.code}",
-                    )
-                )
+                module = importlib.import_module(module_name)
+            except Exception:
+                continue
+
+            for attr_name in dir(module):
+                obj = getattr(module, attr_name, None)
+                if (
+                    isclass(obj)
+                    and issubclass(obj, MindoffAPIMixin)
+                    and obj is not MindoffAPIMixin
+                ):
+                    _validate_view_class(obj, errors)
+
     return errors
 
 
-def _flatten_patterns(patterns):
-    flat = []
-    for pattern in patterns:
-        if isinstance(pattern, URLResolver):
-            try:
-                flat.extend(_flatten_patterns(pattern.url_patterns))
-            except (ImportError, ImproperlyConfigured):
-                continue
-        elif isinstance(pattern, URLPattern):
-            flat.append(pattern)
-    return flat
+def _validate_view_class(view_class, errors):
+    try:
+        instance = view_class()
+        instance.validate_api_configuration()
+    except Exception as exc:
+        error_code = getattr(exc, "code", "API_CONFIG_ERR")
+        errors.append(
+            Error(
+                f"API Configuration Error in {view_class.__name__}: {str(exc)}",
+                hint="Check validate_api_configuration() in your API class.",
+                obj=view_class,
+                id=f"django_mindoff.{error_code}",
+            )
+        )

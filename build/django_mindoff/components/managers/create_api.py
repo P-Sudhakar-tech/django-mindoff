@@ -109,7 +109,7 @@ class DjangoApiCreator:
         if not TEMPLATE_PATH.exists():
             raise FileNotFoundError(f"API template not found at {TEMPLATE_PATH}")
 
-        api_dir = self.base_path / self.original_app_name / "api"
+        api_dir = self.base_path / self.original_app_name / "apis"
         api_file = api_dir / f"{self.raw_api}.py"
 
         content = TEMPLATE_PATH.read_text()
@@ -187,7 +187,7 @@ class DjangoApiCreator:
         app_dir = self.base_path / self.original_app_name
         view_path = app_dir / "views.py"
 
-        v1_import = f"from .api.{self.raw_api} import {self.api_class_name}"
+        v1_import = f"from .apis.{self.raw_api} import {self.api_class_name}"
 
         router_template = VERSION_ROUTER_TEMPLATE_PATH.read_text()
         router_code = router_template.replace(
@@ -247,7 +247,7 @@ class DjangoApiCreator:
             raise FileNotFoundError(f"Test template not found at {TEST_TEMPLATE_PATH}")
 
         test_apis_dir = self.base_path / self.original_app_name / "tests" / "test_apis"
-        test_file = test_apis_dir / f"{self.raw_api}.py"
+        test_file = test_apis_dir / f"test_{self.raw_api}.py"
 
         content = TEST_TEMPLATE_PATH.read_text()
         replaced = re.sub(

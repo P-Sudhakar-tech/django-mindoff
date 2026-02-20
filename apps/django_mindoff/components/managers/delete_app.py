@@ -77,7 +77,7 @@ class DjangoAppDeleter:
         with open(self.urls_path, "r+") as f:
             content = f.read()
             url_prefix = self.original_path.split(".")[-1]
-            route = f"path('{url_prefix}/', include('{self.dotted_path}.urls')),"
+            route = f"path('v<int:version>/{url_prefix}/', include('{self.dotted_path}.urls')),"
             lines = content.splitlines()
             updated = [line for line in lines if route not in line]
             f.seek(0)

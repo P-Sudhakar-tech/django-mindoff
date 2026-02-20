@@ -436,6 +436,10 @@ urlpatterns = original_patterns + [
                 assert (
                     content_type
                 ), f"[{api_url_name}] Binary response missing Content-Type"
+                assert not any(
+                    content_type.startswith(t)
+                    for t in ("text/", "application/json", "application/xml")
+                ), f"[{api_url_name}] Binary response has unexpected text Content-Type: {content_type}"
                 assert isinstance(
                     response.content, (bytes, bytearray)
                 ), f"[{api_url_name}] Binary response must be bytes"
