@@ -1,0 +1,51 @@
+# Environment
+.env
+.env.*
+.venv/
+venv/
+ENV/
+__env__/
+env.bak/
+.env.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*.log
+*.db
+*.sqlite3
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Django
+media/
+staticfiles/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking / lint
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
+*.swp
+*.bat
+*.sh

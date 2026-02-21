@@ -1,3 +1,6 @@
 include LICENSE
 include README.md
-recursive-include django_mindoff *
+graft django_mindoff
+prune django_mindoff/tests
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
