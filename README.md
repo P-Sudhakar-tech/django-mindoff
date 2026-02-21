@@ -60,7 +60,7 @@ return mo_response_kit.json_response(
 )
 ```
 
-Run the server. Focus on logic. Repeat.
+Run the server. Focus on your logic. Repeat.
 
 ---
 
@@ -85,6 +85,7 @@ All responses follow a consistent structure:
 ```
 
 No unstructured exceptions. No inconsistent payloads.
+Umm... One more thing. `django-mindoff` uses uuids for primary keys and foreign keys by design.
 
 ## Architecture 🧭
 
@@ -136,31 +137,29 @@ project_root/
             └─ test_<api_name>.py
 ```
 
-All domain logic lives under `apps/`.
-
 ## Core Kits 🧰
 
 Mindoff is modular. Each kit removes a specific category of friction.
 
-**1. Project Management Kit**
+**1. Project Management Kit:**
 Prompt-driven CLI for creating and organizing projects, apps, models, and APIs.
 
-**2. API Kit**
+**2. API Kit:**
 Centralized configuration layer handling validation, security, documentation, and error handling.
 
-**3. CRUD Kit**
+**3. CRUD Kit:**
 Polars `DataFrame` and `LazyFrame` driven database operations with validation.
 
-**4. Polars Kit**
+**4. Polars Kit:**
 High-performance utilities for streaming-safe frame operations.
 
-**5. Validation Kit**
+**5. Validation Kit:**
 Single-line validation helpers that reduce conditional complexity.
 
-**6. Response Kit**
+**6. Response Kit:**
 Structured JSON, file, text, and HTML responses.
 
-**7. TDD Kit**
+**7. TDD Kit:**
 Testing base classes and helpers for rapid API testing.
 
 ## CLI Overview 🛠️

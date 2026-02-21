@@ -5,7 +5,13 @@ from ..helper_kit import mo_helper_kit
 
 
 class DjangoAppPackager:
-    REQUIRED_FILES = ["pyproject.toml", "README.md", "LICENSE"]
+    REQUIRED_FILES = [
+        "pyproject.toml",
+        "README.md",
+        "LICENSE",
+        "MANIFEST.in",
+        ".gitignore",
+    ]
 
     def __init__(self):
         self.project_root = Path.cwd()

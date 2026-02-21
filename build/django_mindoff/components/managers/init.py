@@ -104,9 +104,7 @@ class DjangoProjectCreator:
             subprocess.run(
                 [self.pip_cmd, "install", *self.optional_packages], check=True
             )
-        # Currently Experimental from local, Will be replaced with actual package
-        local_package_path = str(Path(__file__).resolve().parent.parent.parent.parent)
-        subprocess.run([self.pip_cmd, "install", "-e", local_package_path], check=True)
+        subprocess.run([self.pip_cmd, "install", "django-mindoff"], check=True)
 
     def _initialize_django_project(self):
         print("[ACTION] Creating Django project.")

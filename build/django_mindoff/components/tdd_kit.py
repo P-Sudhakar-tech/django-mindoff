@@ -537,8 +537,8 @@ class MindoffRouterTestCase:
         assert isinstance(response, JsonResponse)
 
         body = json.loads(response.content)
-        assert "detail" in body
-        assert set(body["available_versions"]) == set(self.version_map.keys())
+        assert body["message"]["code"] == "INVALID_API_VERSION"
+        assert set(body["data"]["available_versions"]) == set(self.version_map.keys())
 
 
 # ----------------
