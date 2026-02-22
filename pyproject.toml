@@ -63,12 +63,13 @@ django-mindoff = "django_mindoff.cli:main"
 
 [tool.setuptools]
 include-package-data = true
+package-dir = {"" = "apps"}
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["apps"]
 include = ["django_mindoff*"]
 exclude = ["django_mindoff.tests*", "django_mindoff.*.tests*"]
-namespaces = true
+namespaces = false
 
 [tool.setuptools.package-data]
 django_mindoff = ["py.typed"]

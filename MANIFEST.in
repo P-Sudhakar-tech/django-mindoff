@@ -1,6 +1,6 @@
 include LICENSE
 include README.md
-graft django_mindoff
-prune django_mindoff/tests
+graft apps/django_mindoff
+prune apps/django_mindoff/tests
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
