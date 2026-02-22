@@ -1,4 +1,7 @@
 default_app_config = "django_mindoff.apps.DjangoMindoffConfig"
-from importlib.metadata import version
+from importlib.metadata import version, PackageNotFoundError
 
-__version__ = version("django-mindoff")
+try:
+    __version__ = version("django-mindoff")
+except PackageNotFoundError:
+    __version__ = "unknown"
