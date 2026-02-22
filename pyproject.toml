@@ -69,7 +69,6 @@ package-dir = {"" = "apps"}
 where = ["apps"]
 include = ["django_mindoff*"]
 exclude = ["django_mindoff.tests*", "django_mindoff.*.tests*"]
-namespaces = false
 
 [tool.setuptools.package-data]
 django_mindoff = ["py.typed"]
