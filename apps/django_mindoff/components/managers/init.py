@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 from ..helper_kit import mo_helper_kit
@@ -65,26 +66,13 @@ class DjangoProjectCreator:
     def _install_packages(self):
         print("[ACTION] Installing required packages.")
 
-        base_packages = [
-            # Core
-            "django",
-            "djangorestframework",
-            "python-decouple",
-            "django-ratelimit",
-            "pytest",
-            "pytest-django",
-            "model-bakery",
-            "typeguard",
-            # Polars
-            "polars",
-            "pandas",
-            "sqlalchemy",
-            "orjson",
-            "pyarrow",
-            # Queuing
-            "dramatiq",
-            "redis",
-        ]
+        base_packages = self._get_base_packages()
+        if not base_packages:
+            print(
+                "[WARN] No dependencies found in pyproject.toml. "
+                "Skipping package installation."
+            )
+            return
         subprocess.run(
             [self.pip_cmd, "install", *base_packages],
             check=True,
@@ -146,10 +134,13 @@ class DjangoProjectCreator:
         if mindoff_header not in updated:
             updated += f"""
 {mindoff_header}
+AUTH_USER_MODEL = "django_mindoff.User"
 MINDOFF_LOG_ERRORS_IN_DEBUG = False
 MINDOFF_TRACEBACK_DIRS = ["apps", "config"]
 REDIS_URL = config("REDIS_URL")
 POLARS_VALIDATOR_ERROR_COL = "__error__info"
+MINDOFF_USE_VIEW_CACHE = False
+MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
 """
 
         self.settings_path.write_text(updated)
@@ -186,8 +177,15 @@ POLARS_VALIDATOR_ERROR_COL = "__error__info"
             )
         elif "from django.urls import" not in content:
             content = "from django.urls import path, include\n" + content
+        if "from django_mindoff import urls as mindoff_urls" not in content:
+            content = "from django_mindoff import urls as mindoff_urls\n" + content
         if "from django.views.generic.base import TemplateView" not in content:
             content = "from django.views.generic.base import TemplateView\n" + content
+        if 'path("mindoff/", include(mindoff_urls))' not in content:
+            content = content.replace(
+                "urlpatterns = [",
+                "urlpatterns = [\n    path('mindoff/', include(mindoff_urls)),",
+            )
         if "path('', TemplateView.as_view(" not in content:
             content = content.replace(
                 "urlpatterns = [",
@@ -221,9 +219,9 @@ POLARS_VALIDATOR_ERROR_COL = "__error__info"
         target = self.project_root / ".gitignore"
         shutil.copy(source, target)
 
-        print("[ACTION] Copying Responses.csv to config folder.")
-        responses_src = Path(__file__).parent / "resources" / "Responses.csv"
-        responses_dst = self.config_dir / "Responses.csv"
+        print("[ACTION] Copying responses.csv to config folder.")
+        responses_src = Path(__file__).parent / "resources" / "responses.csv"
+        responses_dst = self.config_dir / "responses.csv"
         shutil.copy(responses_src, responses_dst)
 
     def _initialize_git(self):
@@ -246,6 +244,35 @@ POLARS_VALIDATOR_ERROR_COL = "__error__info"
                 new_lines.insert(-1, f"{indent}'{value}',")
                 inside_list = False
         return "\n".join(new_lines)
+
+    def _get_base_packages(self):
+        pyproject_path = self.project_root / "pyproject.toml"
+        packages = self._read_pyproject_dependencies(
+            pyproject_path, optional_group="internal"
+        )
+        if packages:
+            return packages
+        return []
+
+    def _read_pyproject_dependencies(self, path, optional_group=None):
+        if not path.exists():
+            return []
+        data = tomllib.loads(path.read_text())
+        project = data.get("project", {})
+        base = project.get("dependencies", []) or []
+        optional = []
+        if optional_group:
+            opt = project.get("optional-dependencies", {})
+            optional = opt.get(optional_group, []) or []
+
+        # Preserve order and dedupe
+        seen = set()
+        combined = []
+        for item in list(base) + list(optional):
+            if item not in seen:
+                combined.append(item)
+                seen.add(item)
+        return combined
 
 
 # ======== FUNCTIONS =======
