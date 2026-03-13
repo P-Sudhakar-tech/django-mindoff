@@ -1,0 +1,137 @@
+name: PR CI
+
+on:
+  push:
+    branches:
+      - root
+    tags:
+      - "v*"
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+    branches:
+      - root
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Smoke test (minimal install)
+  # ─────────────────────────────────────────────
+  smoke-minimal:
+    name: Smoke (minimal install)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install minimal package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: CLI smoke check
+        run: django-mindoff init --help
+
+  # ─────────────────────────────────────────────
+  # 2. Tests + coverage enforcement (≥90%)
+  # ─────────────────────────────────────────────
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    env:
+      DJANGO_SETTINGS_MODULE: apps.django_mindoff.tests.settings
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[internal]"
+          pip install pytest-cov
+
+      - name: Django system checks
+        run: python manage.py check --settings=apps.django_mindoff.tests.settings
+
+      - name: Run migrations
+        run: python manage.py migrate --noinput --settings=apps.django_mindoff.tests.settings
+
+      - name: Run tests with coverage (min 90%)
+        run: |
+          pytest \
+            --ds=apps.django_mindoff.tests.settings \
+            --cov=apps.django_mindoff \
+            --cov-report=xml \
+            --cov-fail-under=90
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage.xml
+
+  # ─────────────────────────────────────────────
+  # 3. PR title format lint
+  #    Format: {emoji} {Verb-starting sentence}
+  # ─────────────────────────────────────────────
+  lint-pr-title:
+    name: Lint PR title
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check PR title and label
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+
+            // ── Title format check ──────────────────────────────────────────
+            const titleRegex = /^\p{Emoji_Presentation}\s+[A-Z][a-z]+/u;
+            if (!titleRegex.test(title)) {
+              core.setFailed(
+                `PR title "${title}" does not match the required format.\n` +
+                `Expected: {emoji} {Sentence starting with a capitalised Verb}\n` +
+                `Example:  ✨ Add user authentication`
+              );
+            }
+
+            // ── Label check ─────────────────────────────────────────────────
+            const allowedLabels = [
+              "bug",
+              "feature",
+              "enhancement",
+              "documentation",
+              "internal",
+            ];
+
+            const hasAllowed = labels.some(l => allowedLabels.includes(l));
+            if (!hasAllowed) {
+              core.setFailed(
+                `PR must have at least one of the allowed labels:\n` +
+                allowedLabels.join(", ") + "\n" +
+                `Current labels: ${labels.join(", ") || "(none)"}`
+              );
+            }
