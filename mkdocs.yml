@@ -1,6 +1,6 @@
 site_name: Django Mindoff
 site_description: Fast, structured, and scalable API development with django-mindoff
-site_url: https://mindoffwork.github.io/django-mindoff/
+site_url: https://django-mindoff.mindoff.work
 repo_name: mindoffwork/django-mindoff
 repo_url: https://github.com/mindoffwork/django-mindoff
 
@@ -34,8 +34,8 @@ nav:
   - Community:
       - Overview: community/index.md
       - Contribution Guide: community/contribution-guide.md
-      - Issues & Discussions: community/issues-discussions.md
-      - Code of Conduct: community/code-of-conduct.md
+      - Versioning: community/versioning.md
+      - Security Policy: community/security-policy.md
 
 theme:
   name: material
@@ -88,4 +88,7 @@ extra_css:
 
 extra:
   generator: false
+  version:
+    provider: mike
+    default: latest
 copyright: "©️ 2026 Mindoff.work"
