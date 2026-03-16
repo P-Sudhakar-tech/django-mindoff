@@ -49,7 +49,7 @@ and you are on the correct branch
 Example for the `2.1` series:
 
 ```bash
-mike deploy --push docs --update-aliases v2.1 latest-release
+mike deploy --branch docs --push --update-aliases v2.1 latest-release
 mike set-default --push latest-release
 ```
 
