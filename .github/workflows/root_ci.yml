@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - root
-    paths-ignore:
-      - 'CHANGELOG.md'
+    paths:
+      - 'apps/**'
+      - 'config/**'
+      - 'manage.py'
+      - 'mindoff.py'
 
 concurrency:
   group: root-stability-${{ github.sha }}
