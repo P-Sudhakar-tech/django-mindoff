@@ -10,7 +10,7 @@ Django Mindoff is an architectural framework that manages the structure and mech
 
 ## Key Features
 
-1. **Project Setup That Just Works*   
+1. **Project Setup That Just Works**      
    Start a new API project with guided CLI commands for init, create, delete, and nuke. Projects start ready to run with a sensible structure, so developers can begin building APIs immediately without worrying about project layout.
 
 2. **Fully Managed APIs**   
