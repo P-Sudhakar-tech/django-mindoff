@@ -1446,14 +1446,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../community/versioning/" class="md-nav__link">
+      <a href="../../community/deployment-versioning/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Versioning
+    Deployment & Versioning
   
 
     
@@ -1730,7 +1730,7 @@ Use this mode when endpoint runtime is high and clients should poll or stream pr
 <h2 id="implementation">Implementation<a class="headerlink" href="#implementation" title="Permanent link">&para;</a></h2>
 <h3 id="1-mindoff-queue-api-class">1. Mindoff Queue API Class<a class="headerlink" href="#1-mindoff-queue-api-class" title="Permanent link">&para;</a></h3>
 <p>Once Redis and the worker are running, queue mode is enabled by setting <code>process_mode = "queue"</code> on the API class.</p>
-<div class="admonition warning">
+<div class="admonition failure">
 <p class="admonition-title">Queue mode does not support file uploads</p>
 <p>Multipart or file uploads are blocked when <code>process_mode="queue"</code>.</p>
 </div>
@@ -1992,7 +1992,7 @@ and label while validating the checkpoint key and checking for cancellation.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest-release", "provider": "mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>

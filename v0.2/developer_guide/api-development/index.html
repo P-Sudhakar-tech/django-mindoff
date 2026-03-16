@@ -1462,14 +1462,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../community/versioning/" class="md-nav__link">
+      <a href="../../community/deployment-versioning/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Versioning
+    Deployment & Versioning
   
 
     
@@ -2050,9 +2050,9 @@ It keeps payload checks consistent and moves structural validation out of endpoi
 <li><code>basic</code>: missing keys are ignored, but existing keys are validated</li>
 <li><code>None</code>: skip schema validation</li>
 </ul>
-<div class="admonition info">
-<p class="admonition-title">Extra keys are allowed</p>
-<p><code>payload_schema</code> only validates keys it knows about; extra keys are accepted in all modes.</p>
+<div class="admonition question">
+<p class="admonition-title">Are extra keys allowed?</p>
+<p><code>payload_schema</code> only validates keys it knows about. Extra keys are accepted in all modes.</p>
 </div>
 
 <p>Use <code>max_payload_size</code> and <code>max_payload_depth</code> to guard against large or deeply nested payloads.</p>
@@ -2064,7 +2064,7 @@ It keeps payload checks consistent and moves structural validation out of endpoi
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">authentication_classes</span> <span class="o">=</span> <span class="p">[</span><span class="n">TokenAuthentication</span><span class="p">]</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">permission_classes</span> <span class="o">=</span> <span class="p">[</span><span class="n">IsAuthenticated</span><span class="p">]</span>
 </code></pre></div>
-<div class="admonition warning">
+<div class="admonition danger">
 <p class="admonition-title">Session authentication is not recommended</p>
 <p><code>django-mindoff</code> is API-first. Prefer token-based authentication for API workflows; use session authentication only when your API design intentionally requires it.</p>
 </div>
@@ -2175,7 +2175,7 @@ See <a href="../responses/">Responses</a> for details.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest-release", "provider": "mike"}}</script>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>

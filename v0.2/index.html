@@ -1395,14 +1395,14 @@
   
   
     <li class="md-nav__item">
-      <a href="community/versioning/" class="md-nav__link">
+      <a href="community/deployment-versioning/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Versioning
+    Deployment & Versioning
   
 
     
@@ -1602,51 +1602,51 @@
 
 <h1>Django Mindoff</h1>
 
+<p><em>Build production-ready Django REST APIs faster with less boilerplate.</em></p>
+<p>Django Mindoff is an architectural framework that manages the structure and mechanics of API development so developers can focus on business logic, with efficient data workflows powered by Polars.</p>
 <p><a href="https://codecov.io/gh/mindoffwork/django-mindoff"><img alt="Coverage Status" src="https://codecov.io/gh/mindoffwork/django-mindoff/branch/root/graph/badge.svg" /></a>
 <a href="https://pypi.org/project/django-mindoff/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/django-mindoff.svg?logo=pypi&amp;logoColor=white" /></a>
 <a href="https://github.com/mindoffwork/django-mindoff/actions/workflows/ci.yml"><img alt="Python" src="https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB?logo=python&amp;logoColor=white" /></a></p>
-<p><em>Build production-ready Django REST APIs faster with less boilerplate.</em></p>
-<p>Django Mindoff is an architectural framework that manages the structure and mechanics of API development so developers can focus on business logic, with efficient data workflows powered by Polars.</p>
 <h2 id="key-features">Key Features<a class="headerlink" href="#key-features" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
-<p><strong>Project Setup That Just Works</strong>    <br />
+<p><strong>Project Setup That Just Works</strong><br />
    Start a new API project with guided CLI commands for init, create, delete, and nuke. Projects start ready to run with a sensible structure, so developers can begin building APIs immediately without worrying about project layout.</p>
 </li>
 <li>
-<p><strong>Fully Managed APIs</strong> <br />
+<p><strong>Fully Managed APIs</strong><br />
    Define request method, access control, payload rules, rate limits, and execution mode in a single API definition. Mindoff enforces these rules automatically, handling validation, security checks, and execution flow behind the scenes.</p>
 </li>
 <li>
-<p><strong>API Versioning That Stays Manageable</strong> <br />
+<p><strong>API Versioning That Stays Manageable</strong><br />
    Ship and evolve versioned APIs using a built‑in routing structure. APIs are automatically organized so new versions stay clean while existing clients continue working without disruption.</p>
 </li>
 <li>
-<p><strong>Queue-Ready APIs</strong> <br />
+<p><strong>Queue-Ready APIs</strong><br />
    Run APIs synchronously or as background processes when needed. Simply switch <code>process_mode</code> to <code>"queue"</code> and Mindoff handles queue orchestration, status tracking, progress updates, cancellation, and retries.</p>
 </li>
 <li>
-<p><strong>Validation in One Line</strong> <br />
+<p><strong>Validation in One Line</strong><br />
    Use simple validation helpers that keep API logic clean and cognitively light. With aggregation support, multiple validation errors can be captured together and returned in a structured response.</p>
 </li>
 <li>
-<p><strong>Consistent Responses, Every Time</strong> <br />
+<p><strong>Consistent Responses, Every Time</strong><br />
    Return responses through a unified response structure using response endpoints. Messages stay professional, consistent, and predictable across the entire API surface.</p>
 </li>
 <li>
-<p><strong>Vectorized Model Validation &amp; Bulk Writes</strong> <br />
+<p><strong>Vectorized Model Validation &amp; Bulk Writes</strong><br />
    Pass a <code>model_frame</code> (DataFrame or LazyFrame) to <code>create</code> or <code>update</code> and Mindoff validates it automatically against the Django model. Validation runs in a vectorized, loop‑free pipeline and valid rows are written directly to the model's table with high efficiency.</p>
 </li>
 <li>
-<p><strong>Querysets to DataFrames, Instantly</strong> <br />
+<p><strong>Querysets to DataFrames, Instantly</strong><br />
    Provide a Django queryset and Mindoff converts the results into a DataFrame or LazyFrame. Data is returned with built‑in pagination and streaming support, making large reads predictable and efficient.</p>
 </li>
 <li>
-<p><strong>Optimized Polars Utilities for DataFrame &amp; LazyFrame</strong> <br />
+<p><strong>Optimized Polars Utilities for DataFrame &amp; LazyFrame</strong><br />
    Run checks, conversions, and transformations seamlessly across both DataFrame and LazyFrame with Mindoff’s Polars utilities. Operations run natively in vectorized form and stay tuned for performance and efficiency, keeping data pipelines smooth and predictable.</p>
 </li>
 <li>
-<p><strong>Tests With Almost No Setup</strong> <br />
+<p><strong>Tests With Almost No Setup</strong><br />
     Write API tests using declarative test mixins that talk to the API automatically. Focus on verifying behavior instead of crafting request calls and basic assertions, which are handled automatically by Mindoff.</p>
 </li>
 </ol>
@@ -1657,7 +1657,7 @@
 <h3 id="2-initialize-a-project">2. Initialize a Project<a class="headerlink" href="#2-initialize-a-project" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>django-mindoff<span class="w"> </span>init
 </code></pre></div>
-<p><em>This sets up the project foundation for you, including structure, config files, and ready-to-run wiring. Framework dependencies are managed internally, and <code>django-mindoff</code> aligns compatible Django, DRF, and Polars versions for you. Read the complete list here: <a href="https://mindoffwork.github.io/django-mindoff/architecture/management-kit/#default-package-set-installed-by-init">requirements guide</a>.</em></p>
+<p><em>This sets up the project foundation for you, including structure, config files, and ready-to-run wiring. Framework dependencies are managed internally, and <code>django-mindoff</code> aligns compatible Django, DRF, and Polars versions for you. Read the complete list here: <a href="https://django.mindoff.work/latest-release/developer_guide/architecture/management-kit/#default-package-set-installed-by-init">requirements guide</a>.</em></p>
 <p>What you should see:</p>
 <ul>
 <li>A new project scaffold with <code>manage.py</code>, <code>mindoff.py</code>, <code>config/</code>, and <code>apps/</code></li>
@@ -1706,7 +1706,7 @@
 <li>A JSON response with status, structured message metadata, and your data.message</li>
 </ul>
 <p>✅ You now have a working API endpoint running with a structured success response.</p>
-<p>From here, shape the <code>run()</code> method around your real business logic and output. To control response messaging, add custom entries in <code>config/responses.csv</code> with your preferred <code>http_status</code> code. When you are ready to move beyond Quick Start, continue with the <a href="https://mindoffwork.github.io/django-mindoff/developer_guide/">developer guide</a>. It covers the package features in detail, explains configuration and architecture choices, and helps you build real-world applications with confidence.</p>
+<p>From here, shape the <code>run()</code> method around your real business logic and output. To control response messaging, add custom entries in <code>config/responses.csv</code> with your preferred <code>http_status</code> code. When you are ready to move beyond Quick Start, continue with the <a href="https://django.mindoff.work/latest-release/developer_guide/">developer guide</a>. It covers the package features in detail, explains configuration and architecture choices, and helps you build real-world applications with confidence.</p>
 <h2 id="license">License<a class="headerlink" href="#license" title="Permanent link">&para;</a></h2>
 <p>This project uses the same BSD 3-Clause License as the Django project. See the <a href="https://github.com/mindoffwork/django-mindoff/blob/root/LICENSE">LICENSE</a> file for full terms.</p>
 
@@ -1763,7 +1763,7 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "search.suggest", "search.highlight"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "search.suggest", "search.highlight"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest-release", "provider": "mike"}}</script>
     
     
       <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
