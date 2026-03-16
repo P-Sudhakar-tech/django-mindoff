@@ -130,6 +130,7 @@ When you are ready to cut the corrected release, return to the [Deployment Workf
 If a docs deploy introduces an issue, redeploy the last known good version:
 
 ```bash
+mike delete --branch docs --push v2.1
 mike deploy --push <version>
 ```
 
