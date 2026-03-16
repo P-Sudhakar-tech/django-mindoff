@@ -50,7 +50,7 @@ Example for the `2.1` series:
 
 ```bash
 mike deploy --branch docs --push --update-aliases v2.1 latest-release
-mike set-default --push latest-release
+mike set-default --branch docs --push latest-release
 ```
 
 This:
