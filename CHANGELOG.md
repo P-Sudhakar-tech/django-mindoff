@@ -1,5 +1,10 @@
 <h1>Release Notes</h1>
 
+## Recent Changes
+
+### Internal
+- 👷 Update codecov status in root ci ([#19](https://github.com/mindoffwork/django-mindoff/pull/19))
+
 ## v0.2.0
 
 ### Features
