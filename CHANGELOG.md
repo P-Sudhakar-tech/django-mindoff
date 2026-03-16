@@ -8,6 +8,9 @@
 ### Documentation
 - 📝 Update overall documentation and improve documentation design ([#20](https://github.com/mindoffwork/django-mindoff/pull/20))
 
+### Fixes
+- 🐛 Fix `init` to read the packages from metadata as fallback ([#21](https://github.com/mindoffwork/django-mindoff/pull/21))
+
 ## v0.2.0
 
 ### Features
