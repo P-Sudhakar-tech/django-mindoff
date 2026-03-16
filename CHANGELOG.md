@@ -5,6 +5,9 @@
 ### Internal
 - 👷 Update codecov status in root ci ([#19](https://github.com/mindoffwork/django-mindoff/pull/19))
 
+### Documentation
+- 📝 Update overall documentation and improve documentation design ([#20](https://github.com/mindoffwork/django-mindoff/pull/20))
+
 ## v0.2.0
 
 ### Features
