@@ -1,6 +1,6 @@
 <h1>Release Notes</h1>
 
-## v0.2.0
+## Recent Changes
 
 ### Features
 
