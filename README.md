@@ -8,7 +8,8 @@ Django Mindoff is an architectural framework that manages the structure and mech
 [![PyPI version](https://img.shields.io/pypi/v/django-mindoff.svg?logo=pypi&logoColor=white)](https://pypi.org/project/django-mindoff/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB?logo=python&logoColor=white)](https://github.com/mindoffwork/django-mindoff/actions/workflows/ci.yml)
 
-**Documentation**: [https://django.mindoff.work](https://django.mindoff.work) 
+**Documentation**: [https://django.mindoff.work](https://django.mindoff.work)
+
 **Source**: [https://github.com/mindoffwork/django-mindoff](https://github.com/mindoffwork/django-mindoff)
 
 ## Key Features
