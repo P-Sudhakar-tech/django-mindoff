@@ -15,9 +15,18 @@ Releases and their changes are tracked in the [Release Notes](../release_notes.m
 
 Releases are created in GitHub and finalized by the deployment pipeline.
 
-1. Create a tag in the format: `vX.Y.Z`
-2. Publish that tag as a GitHub Release.
-3. The deployment pipeline then:
+Create a tag in the format: `vX.Y.Z` and push to origin.
+
+Example:
+
+```bash
+git tag -a v0.2.0 -m "Release  v0.2.0"
+git push origin v0.2.0
+```
+
+Publish the tag as a GitHub Release.
+
+The deployment pipeline then:
 
 - Updates `pyproject.toml` with the release version
 - Updates `changelog.md` so changes land under the correct version
