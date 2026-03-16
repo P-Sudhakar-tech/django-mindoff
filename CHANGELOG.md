@@ -11,6 +11,9 @@
 ### Fixes
 - 🐛 Fix `init` to read the packages from metadata as fallback ([#21](https://github.com/mindoffwork/django-mindoff/pull/21))
 
+### Enhancements
+- ✨ Simplify default API class and Test Class template  ([#22](https://github.com/mindoffwork/django-mindoff/pull/22))
+
 ## v0.2.0
 
 ### Features
