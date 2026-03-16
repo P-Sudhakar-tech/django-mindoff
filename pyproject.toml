@@ -75,10 +75,10 @@ docs = [
 
 [project.urls]
 "Homepage" = "https://github.com/mindoffwork/django-mindoff"
-"Documentation" = "https://github.com/mindoffwork/django-mindoff#readme"
+"Documentation" = "https://django.mindoff.work/"
 "Source" = "https://github.com/mindoffwork/django-mindoff.git"
 "Issues" = "https://github.com/mindoffwork/django-mindoff/issues"
-"Changelog" = "https://github.com/mindoffwork/django-mindoff/blob/main/CHANGELOG.md"
+"Changelog" = "https://github.com/mindoffwork/django-mindoff/blob/root/CHANGELOG.md"
 
 [project.scripts]
 django-mindoff = "django_mindoff.cli:main"
