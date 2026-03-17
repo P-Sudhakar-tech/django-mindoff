@@ -5,10 +5,11 @@ on:
     branches:
       - root
     paths:
-      - 'apps/**'
-      - 'config/**'
-      - 'manage.py'
-      - 'mindoff.py'
+      - "apps/**"
+      - "config/**"
+      - "manage.py"
+      - "mindoff.py"
+      - "pytest.ini"
 
 concurrency:
   group: root-stability-${{ github.sha }}

@@ -109,7 +109,21 @@ Django Mindoff uses `mkdocs` for documentation. Use the following command to run
 mkdocs serve
 ```
 
-### 4. Running Tests
+### 4. Create a `.env` File (Required)
+
+Running the source locally requires a `.env` file at the project root. Create it and paste the sample values below:
+
+```bash
+DJANGO_SECRET_KEY='django-insecure-change-me'
+DEBUG=True
+REDIS_URL=redis://127.0.0.1:6379/0
+```
+
+Replace `DJANGO_SECRET_KEY` with your own value before running in any shared or long-lived environment.
+
+If you already have a Redis instance running locally, this default `REDIS_URL` should work. Otherwise, update it to match your Redis host and port.
+
+### 5. Running Tests
 
 Before submitting a pull request, ensure that the test suite passes and that **coverage is at 90% minimum**.
 
@@ -117,7 +131,7 @@ Before submitting a pull request, ensure that the test suite passes and that **c
 pytest
 ```
 
-### 5. Branch Naming Strategy
+### 6. Branch Naming Strategy
 
 _Good Practices, Recommended for Maintainers and Collaborators_
 
@@ -139,7 +153,7 @@ enhancement/validation-performance
 internal/ci-changelog-step
 ```
 
-### 6. Commit Message Guidelines
+### 7. Commit Message Guidelines
 
 Use [Gitmoji](https://gitmoji.dev) codes in commit messages that match the change type. Keep the text short and action-oriented. Favor clarity over creativity.
 
@@ -149,7 +163,7 @@ Example:
 :sparkles: Add bulk update validation
 ```
 
-### 7. Open a Pull Request
+### 8. Open a Pull Request
 
 1. Push your branch: `git push origin <branch-name>`
 
