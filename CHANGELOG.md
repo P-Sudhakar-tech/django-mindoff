@@ -1,5 +1,10 @@
 <h1>Release Notes</h1>
 
+## Recent Changes
+
+### Fixes
+- 🐛 Fix exception code not matching response code ([#23](https://github.com/mindoffwork/django-mindoff/pull/23))
+
 ## v0.3.0
 
 ### Internal
