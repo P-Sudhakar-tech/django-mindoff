@@ -1387,10 +1387,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-running-tests" class="md-nav__link">
+  <a href="#4-create-a-env-file-required" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Running Tests
+        4. Create a .env File (Required)
       
     </span>
   </a>
@@ -1398,10 +1398,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-branch-naming-strategy" class="md-nav__link">
+  <a href="#5-running-tests" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Branch Naming Strategy
+        5. Running Tests
       
     </span>
   </a>
@@ -1409,10 +1409,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-commit-message-guidelines" class="md-nav__link">
+  <a href="#6-branch-naming-strategy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Commit Message Guidelines
+        6. Branch Naming Strategy
       
     </span>
   </a>
@@ -1420,10 +1420,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-open-a-pull-request" class="md-nav__link">
+  <a href="#7-commit-message-guidelines" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Open a Pull Request
+        7. Commit Message Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-open-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Open a Pull Request
       
     </span>
   </a>
@@ -1701,10 +1712,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-running-tests" class="md-nav__link">
+  <a href="#4-create-a-env-file-required" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Running Tests
+        4. Create a .env File (Required)
       
     </span>
   </a>
@@ -1712,10 +1723,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-branch-naming-strategy" class="md-nav__link">
+  <a href="#5-running-tests" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Branch Naming Strategy
+        5. Running Tests
       
     </span>
   </a>
@@ -1723,10 +1734,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-commit-message-guidelines" class="md-nav__link">
+  <a href="#6-branch-naming-strategy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Commit Message Guidelines
+        6. Branch Naming Strategy
       
     </span>
   </a>
@@ -1734,10 +1745,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-open-a-pull-request" class="md-nav__link">
+  <a href="#7-commit-message-guidelines" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Open a Pull Request
+        7. Commit Message Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-open-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Open a Pull Request
       
     </span>
   </a>
@@ -1904,11 +1926,19 @@
 <p>Django Mindoff uses <code>mkdocs</code> for documentation. Use the following command to run the docs locally and open the local URL shown in the terminal to preview live rendering:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>mkdocs<span class="w"> </span>serve
 </code></pre></div>
-<h3 id="4-running-tests">4. Running Tests<a class="headerlink" href="#4-running-tests" title="Permanent link">&para;</a></h3>
-<p>Before submitting a pull request, ensure that the test suite passes and that <strong>coverage is at 90% minimum</strong>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pytest
+<h3 id="4-create-a-env-file-required">4. Create a <code>.env</code> File (Required)<a class="headerlink" href="#4-create-a-env-file-required" title="Permanent link">&para;</a></h3>
+<p>Running the source locally requires a <code>.env</code> file at the project root. Create it and paste the sample values below:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">DJANGO_SECRET_KEY</span><span class="o">=</span><span class="s1">&#39;django-insecure-change-me&#39;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">DEBUG</span><span class="o">=</span>True
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://127.0.0.1:6379/0
 </code></pre></div>
-<h3 id="5-branch-naming-strategy">5. Branch Naming Strategy<a class="headerlink" href="#5-branch-naming-strategy" title="Permanent link">&para;</a></h3>
+<p>Replace <code>DJANGO_SECRET_KEY</code> with your own value before running in any shared or long-lived environment.</p>
+<p>If you already have a Redis instance running locally, this default <code>REDIS_URL</code> should work. Otherwise, update it to match your Redis host and port.</p>
+<h3 id="5-running-tests">5. Running Tests<a class="headerlink" href="#5-running-tests" title="Permanent link">&para;</a></h3>
+<p>Before submitting a pull request, ensure that the test suite passes and that <strong>coverage is at 90% minimum</strong>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pytest
+</code></pre></div>
+<h3 id="6-branch-naming-strategy">6. Branch Naming Strategy<a class="headerlink" href="#6-branch-naming-strategy" title="Permanent link">&para;</a></h3>
 <p><em>Good Practices, Recommended for Maintainers and Collaborators</em></p>
 <p>All branches must start with one of the following prefixes:</p>
 <ul>
@@ -1919,18 +1949,18 @@
 <li><code>internal/*</code> - Refactors, tooling, CI changes, or non-user-facing maintenance.</li>
 </ul>
 <p>Examples:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>feature/bulk-update-validation
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>bug/queue-timeout-fix
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>documentation/contribution-guide
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>enhancement/validation-performance
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>internal/ci-changelog-step
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>feature/bulk-update-validation
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>bug/queue-timeout-fix
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>documentation/contribution-guide
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>enhancement/validation-performance
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>internal/ci-changelog-step
 </code></pre></div>
-<h3 id="6-commit-message-guidelines">6. Commit Message Guidelines<a class="headerlink" href="#6-commit-message-guidelines" title="Permanent link">&para;</a></h3>
+<h3 id="7-commit-message-guidelines">7. Commit Message Guidelines<a class="headerlink" href="#7-commit-message-guidelines" title="Permanent link">&para;</a></h3>
 <p>Use <a href="https://gitmoji.dev">Gitmoji</a> codes in commit messages that match the change type. Keep the text short and action-oriented. Favor clarity over creativity.</p>
 <p>Example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>:sparkles: Add bulk update validation
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>:sparkles: Add bulk update validation
 </code></pre></div>
-<h3 id="7-open-a-pull-request">7. Open a Pull Request<a class="headerlink" href="#7-open-a-pull-request" title="Permanent link">&para;</a></h3>
+<h3 id="8-open-a-pull-request">8. Open a Pull Request<a class="headerlink" href="#8-open-a-pull-request" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
 <p>Push your branch: <code>git push origin &lt;branch-name&gt;</code></p>
@@ -1948,17 +1978,17 @@
 </ul>
 <h3 id="1-pr-title">1. PR Title<a class="headerlink" href="#1-pr-title" title="Permanent link">&para;</a></h3>
 <p>Pattern:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>{emoji} {Verb-starting phrase}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>{emoji} {Verb-starting phrase}
 </code></pre></div>
 <ul>
 <li>Use the <strong>actual emoji</strong> in place of <code>emoji</code> (not the <code>:gitmoji:</code> code) so it renders correctly in release notes. Use <code>:sparkles:</code>-style codes in commit messages, and raw emoji in PR titles.</li>
 <li><code>Verb-starting phrase</code> should not start with a participle verb and should not end with a period, as it's a phrase, not a sentence. (Use "Add", not "Added")</li>
 </ul>
 <p>Good Example ✅:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>✨ Add bulk update validation
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>✨ Add bulk update validation
 </code></pre></div>
 <p>Bad Example ❌:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>:sparkles: Added bulk update validation.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>:sparkles: Added bulk update validation.
 </code></pre></div>
 <h3 id="2-pr-labels-required">2. PR Labels (Required)<a class="headerlink" href="#2-pr-labels-required" title="Permanent link">&para;</a></h3>
 <p>Pick the label that best matches the main change in your branch. Do not choose more than one:</p>
@@ -1985,17 +2015,17 @@
 <li>Risks / migrations (if applicable)</li>
 </ul>
 <p>Example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Summary:
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Add bulk update validation for CSV uploads to prevent invalid rows from being written.
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>Motivation / context:
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>Users reported silent failures when invalid rows were included. This adds explicit validation and error reporting.
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>Testing:
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>pytest apps/&lt;app_name&gt;/tests/test_apis/test_bulk_update.py -q
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>Risks / migrations:
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>None.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Summary:
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>Add bulk update validation for CSV uploads to prevent invalid rows from being written.
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>Motivation / context:
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>Users reported silent failures when invalid rows were included. This adds explicit validation and error reporting.
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>Testing:
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>pytest apps/&lt;app_name&gt;/tests/test_apis/test_bulk_update.py -q
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>Risks / migrations:
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>None.
 </code></pre></div>
 <h2 id="one-last-thing">One Last Thing<a class="headerlink" href="#one-last-thing" title="Permanent link">&para;</a></h2>
 <p>Please respect the maintainers' time and effort.</p>
