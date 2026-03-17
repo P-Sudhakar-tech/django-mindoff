@@ -109,9 +109,30 @@ def run(self, request, *args, **kwargs):
 
 ### 6. Run and Verify
 
+Before running, start your virtual environment:
+
+For Windows:
+
+```bash
+.venv\Scripts\Activate.ps1
+```
+
+For Mac/Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+Run the Migrations:
+
 ```bash
 python manage.py makemigrations
 python manage.py migrate
+```
+
+Run the Local Server:
+
+```bash
 python manage.py runserver
 ```
 
@@ -125,7 +146,9 @@ Open:
 
 ✅ You now have a working API endpoint running with a structured success response.
 
-From here, shape the `run()` method around your real business logic and output. To control response messaging, add custom entries in `config/responses.csv` with your preferred `http_status` code. When you are ready to move beyond Quick Start, continue with the [developer guide][developer-guide]. It covers the package features in detail, explains configuration and architecture choices, and helps you build real-world applications with confidence.
+From here, shape the `run()` method around your real business logic and output. To control response messaging, add custom entries in `config/responses.csv` with your preferred `http_status` code.
+
+When you are ready to move beyond Quick Start, continue with the [developer guide][developer-guide]. It covers the package features in detail, explains configuration and architecture choices, and helps you build real-world applications with confidence.
 
 ## License
 
