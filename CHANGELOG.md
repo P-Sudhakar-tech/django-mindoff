@@ -3,24 +3,35 @@
 ## Recent Changes
 
 ### Fixes
+
 - 🐛 Fix exception code not matching response code ([#23](https://github.com/mindoffwork/django-mindoff/pull/23))
 
 ### Enhancements
-- 🔨 Add AGENTS.md on `init` and corresponding tests ([#24](https://github.com/mindoffwork/django-mindoff/pull/24))
+
+- 🚚 Add top-level dramatiq worker entrypoint and remove legacy `_api_kit` worker module ([#26](https://github.com/mindoffwork/django-mindoff/pull/26))
+- 🔨 Add agents.md on `init` and corresponding tests ([#24](https://github.com/mindoffwork/django-mindoff/pull/24))
+
+### Internal
+
+- ♻️ Sanitize docstrings in the whole codebase ([#25](https://github.com/mindoffwork/django-mindoff/pull/25))
 
 ## v0.3.0
 
 ### Internal
+
 - 👷 Update codecov status in root ci ([#19](https://github.com/mindoffwork/django-mindoff/pull/19))
 
 ### Documentation
+
 - 📝 Update overall documentation and improve documentation design ([#20](https://github.com/mindoffwork/django-mindoff/pull/20))
 
 ### Fixes
+
 - 🐛 Fix `init` to read the packages from metadata as fallback ([#21](https://github.com/mindoffwork/django-mindoff/pull/21))
 
 ### Enhancements
-- ✨ Simplify default API class and Test Class template  ([#22](https://github.com/mindoffwork/django-mindoff/pull/22))
+
+- ✨ Simplify default API class and Test Class template ([#22](https://github.com/mindoffwork/django-mindoff/pull/22))
 
 ## v0.2.0
 
@@ -81,4 +92,3 @@
 - All notable changes to **Django Mindoff** are documented in [Changelog](https://github.com/mindoffwork/django-mindoff/blob/main/CHANGELOG.md).
 - For Released versions, see [Releases](https://github.com/mindoffwork/django-mindoff/releases)
 - Packaging and project metadata are available in `pyproject.toml`.
-
