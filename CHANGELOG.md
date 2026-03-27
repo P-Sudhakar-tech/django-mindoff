@@ -9,7 +9,7 @@
 ### Enhancements
 
 - 🚚 Add top-level dramatiq worker entrypoint and remove legacy `_api_kit` worker module ([#26](https://github.com/mindoffwork/django-mindoff/pull/26))
-- 🔨 Add agents.md on `init` and corresponding tests ([#24](https://github.com/mindoffwork/django-mindoff/pull/24))
+- 🔨 Add AGENTS.md on `init` and corresponding tests ([#24](https://github.com/mindoffwork/django-mindoff/pull/24))
 
 ### Internal
 
