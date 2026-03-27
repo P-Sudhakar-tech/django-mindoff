@@ -67,7 +67,7 @@ Examples:
 
 1. **Environment:** Creates a virtual environment and installs managed dependencies.
 2. **Scaffolding:** Generates the Django project and patches `settings.py` and `urls.py`.
-3. **Resources:** Adds support files such as `mindoff.py`, `pytest.ini`, `.gitignore`, `.env`, HTML templates, and `responses.csv`.
+3. **Resources:** Adds support files such as `mindoff.py`, `AGENTS.md`, `pytest.ini`, `.gitignore`, `.env`, HTML templates, and `responses.csv`.
 4. **Version Control:** Initializes git to capture the generated baseline.
 
 #### Default Package Set Installed by `init`
@@ -187,3 +187,4 @@ Most issues come from registration gaps or manual edits inside generated areas.
 3. **Wiring:** If a route is unreachable, verify generated entries in `urls.py`.
 4. **Markers:** If field generation fails, check whether the model insertion marker was removed.
 5. **Direct command errors:** For direct usage, verify argument formats exactly (`<app>/<ModelName>`, `<app>/<api_name>`, `--to <app>/<ModelName>`).
+

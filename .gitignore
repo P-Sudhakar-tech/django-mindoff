@@ -39,6 +39,9 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+.ai/
+CLAUDE.md
+agents.md
 
 # OS
 .DS_Store

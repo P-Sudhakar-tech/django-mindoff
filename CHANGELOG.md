@@ -6,7 +6,7 @@
 - 🐛 Fix exception code not matching response code ([#23](https://github.com/mindoffwork/django-mindoff/pull/23))
 
 ### Enhancements
-- 🔨 Add agents.md on `init` and corresponding tests ([#24](https://github.com/mindoffwork/django-mindoff/pull/24))
+- 🔨 Add AGENTS.md on `init` and corresponding tests ([#24](https://github.com/mindoffwork/django-mindoff/pull/24))
 
 ## v0.3.0
 
@@ -81,3 +81,4 @@
 - All notable changes to **Django Mindoff** are documented in [Changelog](https://github.com/mindoffwork/django-mindoff/blob/main/CHANGELOG.md).
 - For Released versions, see [Releases](https://github.com/mindoffwork/django-mindoff/releases)
 - Packaging and project metadata are available in `pyproject.toml`.
+

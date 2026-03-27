@@ -210,9 +210,9 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         target = self.project_root / "mindoff.py"
         shutil.copy(source, target)
 
-        print("[ACTION] Writing agents.md.")
-        source = Path(__file__).parent / "resources" / "agents.md"
-        target = self.project_root / "agents.md"
+        print("[ACTION] Writing AGENTS.md.")
+        source = Path(__file__).parent / "resources" / "AGENTS.md"
+        target = self.project_root / "AGENTS.md"
         shutil.copy(source, target)
 
         print("[ACTION] Writing pytest.ini.")
