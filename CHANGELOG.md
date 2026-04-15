@@ -8,6 +8,9 @@
 ### Features
 - ✨ Add CORS defaults to init scaffold ([#28](https://github.com/mindoffwork/django-mindoff/pull/28))
 
+### Fixes
+- 🐛 Load parent models from all apps during foreign key selection ([#29](https://github.com/mindoffwork/django-mindoff/pull/29))
+
 ## v0.4.0
 
 ### Fixes
