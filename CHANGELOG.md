@@ -5,6 +5,9 @@
 ### Enhancements
 - 📝 Move documentation to package folder ([#27](https://github.com/mindoffwork/django-mindoff/pull/27))
 
+### Features
+- ✨ Add CORS defaults to init scaffold ([#28](https://github.com/mindoffwork/django-mindoff/pull/28))
+
 ## v0.4.0
 
 ### Fixes
