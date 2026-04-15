@@ -168,7 +168,10 @@ class TestInitManager:
             'CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", cast=bool, default=True)'
             in updated
         )
-        assert "SECURITY WARNING: Restrict ALLOWED_HOSTS and CORS in production." in updated
+        assert (
+            "SECURITY WARNING: Restrict ALLOWED_HOSTS and CORS in production."
+            in updated
+        )
         assert "MINDOFF_LOG_ERRORS_IN_DEBUG" in updated
 
     def test_update_settings_decouple_already_imported_not_duplicated(self, tmp_path):
@@ -263,9 +266,9 @@ class TestInitManager:
         creator.settings_path = settings_file
         creator._update_settings()
         updated = settings_file.read_text()
-        assert updated.index("'corsheaders.middleware.CorsMiddleware',") < updated.index(
-            "'django.middleware.security.SecurityMiddleware',"
-        )
+        assert updated.index(
+            "'corsheaders.middleware.CorsMiddleware',"
+        ) < updated.index("'django.middleware.security.SecurityMiddleware',")
 
     def test_update_urls_adds_include_and_templateview(self, tmp_path):
         """ACCEPTANCE: Validates update urls adds include and templateview."""
@@ -479,7 +482,7 @@ class TestInitManager:
         creator = init_manager.DjangoProjectCreator()
         creator._initialize_git()
         commit_call = next(c for c in run_calls if "commit" in c)
-        assert "Initial commit" in commit_call
+        assert ":seedling: Setup initial commit" in commit_call
 
 
 class TestNukeManager:

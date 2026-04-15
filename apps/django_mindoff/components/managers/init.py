@@ -18,6 +18,7 @@ class DjangoProjectCreator:
     environment setup, dependency installation, Django project scaffolding,
     settings and URL wiring, template/resource seeding, and initial Git setup.
     """
+
     def __init__(self, apps_dir_name="apps", venv_name=".venv"):
         self.project_root = Path.cwd()
         self.apps_dir_name = apps_dir_name
@@ -258,7 +259,7 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         Path("README.md").touch()
         subprocess.run(["git", "init"])
         subprocess.run(["git", "add", "."])
-        subprocess.run(["git", "commit", "-m", "Initial commit"])
+        subprocess.run(["git", "commit", "-m", ":seedling: Setup initial commit"])
 
     def _append_to_list(self, text, list_name, value):
         lines = text.splitlines()
@@ -289,7 +290,7 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         if list_start is None or list_end is None:
             return text
 
-        list_block = lines[list_start + 1:list_end]
+        list_block = lines[list_start + 1 : list_end]
         existing_idx = None
         before_idx = None
         for idx, line in enumerate(list_block):
@@ -312,10 +313,12 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         indent = " " * 4
         if list_block:
             first_entry = list_block[0]
-            indent = first_entry[: len(first_entry) - len(first_entry.lstrip())] or indent
+            indent = (
+                first_entry[: len(first_entry) - len(first_entry.lstrip())] or indent
+            )
         list_block.insert(insert_idx, f"{indent}'{value}',")
 
-        lines[list_start + 1:list_end] = list_block
+        lines[list_start + 1 : list_end] = list_block
         return "\n".join(lines)
 
     def _ensure_list_item_first(self, text, list_name, value):
@@ -333,7 +336,7 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         if list_start is None or list_end is None:
             return text
 
-        list_block = lines[list_start + 1:list_end]
+        list_block = lines[list_start + 1 : list_end]
         normalized_items = [
             line.strip().strip(",").strip("'").strip('"') for line in list_block
         ]
@@ -346,10 +349,12 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         indent = " " * 4
         if list_block:
             first_entry = list_block[0]
-            indent = first_entry[: len(first_entry) - len(first_entry.lstrip())] or indent
+            indent = (
+                first_entry[: len(first_entry) - len(first_entry.lstrip())] or indent
+            )
         list_block.insert(0, f"{indent}'{value}',")
 
-        lines[list_start + 1:list_end] = list_block
+        lines[list_start + 1 : list_end] = list_block
         return "\n".join(lines)
 
     def _ensure_host_and_cors_config(self, text):
@@ -358,9 +363,7 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
         warning_comment = (
             "# SECURITY WARNING: Restrict ALLOWED_HOSTS and CORS in production."
         )
-        cors_line = (
-            'CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", cast=bool, default=True)'
-        )
+        cors_line = 'CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", cast=bool, default=True)'
         if warning_comment not in text:
             text = re.sub(
                 r"^ALLOWED_HOSTS\s*=.*$",
@@ -419,7 +422,10 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
                 return marker is None or marker.strip() == ""
             if marker is None:
                 return True
-            return f"extra == '{optional_group}'" in marker or f'extra == "{optional_group}"' in marker
+            return (
+                f"extra == '{optional_group}'" in marker
+                or f'extra == "{optional_group}"' in marker
+            )
 
         combined = []
         seen = set()
@@ -441,6 +447,7 @@ MINDOFF_QUEUE_LIST_API_REQUEST_LIMIT = "120/m"
 # ======== FUNCTIONS =======
 def register_subcommand(subparsers):
     """Register the `init` manager command and handler."""
+
     def _create_project(args):
         DjangoProjectCreator().run()
 
