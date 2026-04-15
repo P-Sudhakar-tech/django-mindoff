@@ -52,6 +52,7 @@ This keeps errors focused on project-owned code paths.
 - Raises clear errors for unknown routes, missing versions, or unsupported callback shapes.
 - `get_api_class_attributes(...)`:
 - Resolves API class then merges non-private, non-callable class attributes across MRO.
+- Router runtime dispatch/caching/error contracts are documented in [API Kit - APIVersionRouter (Deep-Dive)](./api-kit.md#apiversionrouter-deep-dive).
 
 These are used for dynamic test/runtime inspection of API metadata.
 

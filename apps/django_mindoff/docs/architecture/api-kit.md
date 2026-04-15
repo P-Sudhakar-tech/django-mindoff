@@ -25,9 +25,37 @@ At a high level, requests follow one shared path and branch only when execution 
 
 ### Core Runtime Components
 
-- **`APIVersionRouter`**: Entry point for versioned APIs. It reads `version` from URL kwargs (default is `1`), resolves the target class from `VERSION_MAP`, and dispatches through `as_view()`. If a version is missing in `VERSION_MAP`, it returns `INVALID_API_VERSION` (including `available_versions`). When `MINDOFF_USE_VIEW_CACHE=True`, view callables are cached per version.
+- **`APIVersionRouter`**: Entry point for versioned APIs. See [APIVersionRouter (Deep-Dive)](#apiversionrouter-deep-dive) for runtime dispatch, cache semantics, and integration contracts.
 - **`MindoffAPIMixin`**: Lifecycle owner for class-based APIs. It extends DRF `APIView` and treats class attributes as policy (`method`, auth, permissions, payload limits/schema, rate limits, process mode, queue controls). `initial()` runs request-time guards, and `_handle_request_logic()` selects `direct` vs `queue`.
 - **`mo_response_kit`**: Response assembler. It builds predictable envelopes based on `responses.csv` metadata.
+
+## APIVersionRouter (Deep-Dive)
+
+`APIVersionRouter` is a runtime dispatcher (`__call__(request, *args, **kwargs)`) that resolves API version, selects a class from `VERSION_MAP`, and hands off execution to DRF-compatible view callables via `as_view()`.
+
+### Runtime Dispatch Contract
+
+- **Version resolution**: `version = kwargs.get("version") or 1`. Missing/falsey `version` falls back to `1`.
+- **Version map contract**: `VERSION_MAP` must be a dict mapping integer version keys to class-based API views (classes exposing `as_view()` and typically inheriting `MindoffAPIMixin`).
+- **Invalid version contract**: when a version key is absent, router returns `mo_response_kit.json_response(...)` with:
+- `message.code = "INVALID_API_VERSION"`
+- `data.available_versions = list(VERSION_MAP.keys())`
+- **Runtime handoff**: on valid match, router calls `view_class.as_view()(request, *args, **kwargs)`, which transitions execution into the target class-based API lifecycle (`MindoffAPIMixin.dispatch()`/`initial()` flow when using Mindoff APIs).
+
+### View Callable Cache Semantics (`MINDOFF_USE_VIEW_CACHE`)
+
+- **Cache disabled** (`False`, default): `as_view()` is called on every request.
+- **Cache enabled** (`True`): router memoizes one callable per version in instance-level `_view_cache`, avoiding repeated `as_view()` construction for the same version key.
+- **Key invariant**: cache identity is version-scoped (`_view_cache[version]`), not request-scoped.
+
+### Integration Points Across Subsystems
+
+- **URL entrypoint contract**: versioned app routes are mounted with `v<int:version>/...`, providing the `version` kwarg consumed by router dispatch.
+- **Helper Kit introspection**: `mo_helper_kit.get_api_class_from_url_name(..., version=...)` resolves router callbacks by reading `VERSION_MAP`; it raises explicit errors for empty maps, unregistered versions, or unsupported callback shapes.
+- **TDD/router verification**:
+- Router-facing tests validate that each `VERSION_MAP` entry dispatches to the correct class (`as_view` path).
+- Unknown versions are expected to surface `INVALID_API_VERSION` with `available_versions` in response data.
+- TDD API-call helpers treat versioned routes as requiring explicit `url_kwargs["version"]` in test calls.
 
 ## Dual-Phase Validation
 
@@ -142,8 +170,15 @@ Used when `process_mode="queue"`.
 
 When troubleshooting, start here:
 
+- **Version not provided in route kwargs:** router runtime falls back to version `1` (`kwargs.get("version") or 1`). If that fallback is unintended, validate URL pattern wiring and route kwargs propagation. In TDD helper calls (`mo_mock_call_api`), missing `url_kwargs["version"]` for versioned URLs is treated as an error.
+- **Empty or misaligned `VERSION_MAP`:**
+- Empty map means no dispatchable versions; runtime invalid-version responses expose `available_versions` as an empty list.
+- If configured URL versions and `VERSION_MAP` keys diverge, requests can resolve to fallback `1` or return `INVALID_API_VERSION`.
 - **Validation seems skipped:** Payload checks only run for `POST`/`PUT`. Verify request method, `payload_validation`, and `payload_schema`.
-- **`INVALID_API_VERSION` returned:** Check router `VERSION_MAP` and the requested URL version.
+- **`INVALID_API_VERSION` returned:** Check requested version key and verify `VERSION_MAP` contains it. Confirm `data.available_versions` matches expected registered keys.
+- **Unexpected cache behavior across requests:** verify `MINDOFF_USE_VIEW_CACHE`.
+- When enabled, repeated calls for the same version should reuse one cached callable.
+- When disabled, `as_view()` is expected to be evaluated per request.
 - **`API_CONFIG_ERR` at startup:** Recheck the rules under [Startup Configuration Checks (`checks.py`)](#1-startup-configuration-checks).
 - **Unexpected throttling or rate-limit errors:** Recheck limits under [Rate Limiting & Queue Controls](#rate-limiting-queue-controls).
 - **Queue accepted but not progressing:** Verify worker availability and Redis/Dramatiq connectivity.
