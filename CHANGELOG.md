@@ -1,5 +1,10 @@
 <h1>Release Notes</h1>
 
+## Recent Changes
+
+### Enhancements
+- 📝 Move documentation to package folder ([#27](https://github.com/mindoffwork/django-mindoff/pull/27))
+
 ## v0.4.0
 
 ### Fixes
