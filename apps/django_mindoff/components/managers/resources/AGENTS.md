@@ -1,182 +1,170 @@
-# Mindoff Coding Agent Guide
+﻿# AGENTS.md
 
-This project uses `django-mindoff` pip package. Follow these rules whenever generating or editing code.
+Primary source of truth for AI-agent behavior in projects scaffolded by `django-mindoff`.
 
-## Primary Rule
+## S1. Goal
 
-- Prefer Mindoff kits over ad-hoc hand-written plumbing.
-- Keep logic aligned with existing app architecture and file placement conventions.
+Build correct, maintainable features with minimal token usage by reusing Mindoff framework tools and documented patterns.
 
-## Priority Order (Always Optimize In This Order)
+## S2. Read Order (Token Efficient)
 
-- Choose approaches that maximize:
-  - high quality and correctness
-  - maintainability, readability, and traceability
-  - lean/lightweight implementation (avoid unnecessary code)
-  - clean and consistent design
-  - efficiency and performance
-- When tradeoffs exist, prefer the option that best satisfies the above priorities with minimum complexity.
+1. Read project `AGENTS.md` first.
+2. Open only the required files under `docs/`.
+3. Validate behavior from code before implementing.
 
-## Imports and Entry Points (Use Exactly)
+Do not scan the entire `docs/` tree when one focused page is enough.
 
-- Validation kit: `from django_mindoff.components.validation_kit import mo_validation_kit`
-- CRUD kit: `from django_mindoff.components.crud_kit import mo_crud_kit`
-- Polars kit: `from django_mindoff.components.polars_kit import mo_polars_kit`
-- Helper kit: `from django_mindoff.components.helper_kit import mo_helper_kit`
-- API kit: `from django_mindoff.components.api_kit import MindoffAPIMixin, mo_api_kit`
-- Response kit: `from django_mindoff.components.response_kit import mo_response_kit`
+## S3. Source of Truth
 
-Important:
+- Runtime behavior: repository code.
+- Agent rules: project `AGENTS.md`.
+- Framework usage guidance: project `docs/`.
 
-- Call validation methods through `mo_validation_kit.<method>(...)` only.
-- Do not bypass kit entry points by importing private internals unless explicitly required.
+If code and docs conflict, ask the user which to follow, then update the other side in the same task.
 
-## Decision Tree for New Logic
+## S4. Docs Source (Mandatory)
 
-1. If the task is tabular/bulk/model-frame oriented, use Polars + CRUD kit.
-2. If the task is regular row/object payload flow without Polars need, use serializers and standard Python logic.
-3. If mixed workload is best, use hybrid:
-   - serializers/request guards for boundary validation
-   - Polars + `mo_crud_kit` for heavy transforms/writes
+`django-mindoff` documentation is available only inside the installed package:
 
-## CRUD and Polars Guidance
+`.../site-packages/django_mindoff/docs/` (venv or global Python install).
 
-- Use `mo_crud_kit.create/read/update` for model-aware bulk operations.
-- `mo_crud_kit.read()` must receive queryset with `.values()`.
-- Treat `status` from CRUD (`ok`, `partial_ok`, `fail`) as part of control flow.
-- Inspect invalid rows from `invalid_model_frms` and the configured error column.
-- Use `mo_polars_kit` helpers for frame normalization, null handling, emptiness checks, and frame type sync.
-- Use Mindoff model-frame format (`model_frms`) where it provides real benefit.
-  - Format: `{ModelClass: pl.DataFrame | pl.LazyFrame}`
-  - Prefer this for bulk/tabular/multi-model flows where it reduces boilerplate and improves clarity.
-  - Do not force `model_frms` for simple non-tabular logic where regular Python/serializer flow is clearer.
-- Respect current limitations:
-  - no `mo_crud_kit.delete()` public API
-  - UUID model PK expectations
-  - explicit `db_column` expectations for PK/FK in CRUD validation flow
+To locate docs, resolve `django_mindoff.__file__` and navigate to its sibling `docs/` folder.
 
-## Validation First Policy
+If installed docs are unavailable, rely on project `AGENTS.md` and local code, and ask the user before assuming undocumented behavior.
 
-- Prefer `mo_validation_kit.ensure_*` checks over manual `if` blocks.
-- Use `is_exception=True` for immediate failure branches.
-- Use `is_aggregate=True` + `finalize(...)` when collecting multiple validation errors.
-- Aggregate-mode safety rule:
-  - If `is_aggregate=True` is used, do not proceed to business logic/CRUD layer until aggregate errors are explicitly checked.
-  - Use `mo_validation_kit.has_errors()` when available in the installed version.
-  - If `has_errors()` is unavailable, enforce gating via `finalize(...)` flow (for example `return_mode="list"` and branch on non-empty errors, or `return_mode="error"/"exception"` to fail-fast).
-- Fallback to plain `if` conditions only when:
-  - validation kit is not suitable for the specific case, or
-  - the user explicitly requests plain conditions.
+## S4.1 Docs Topic Map (Use Only What You Need)
 
-## API Authoring Rules
+Prefer these pages based on task type:
 
-- Build APIs as `MindoffAPIMixin` subclasses unless a different pattern is explicitly requested.
-- Set API class configuration (`api_url_name`, `api_name`, `api_description`, `method`, process/payload options) as class attributes.
-- Return through `mo_response_kit` to keep response envelope consistent.
-- For queue workloads, use queue mode and progress checkpoints where appropriate.
-- Before implementing API logic, review available API kit attributes/parameters and use built-in features instead of custom workarounds.
-- For request logic (for example `POST`), set required API attributes properly (method, payload schema/validation, limits, auth/permissions, process mode) based on user needs.
-- Use only supported `payload_schema` forms for the current installed version; do not invent schema formats.
-  - Supported forms include primitive types, dict/list schema shorthand, typed list/dict, `Union`, `Literal`, and optional (`Union[..., None]`) as documented for the current version.
-  - If uncertain, verify from local package code/docs before writing schema.
+- API implementation: `docs/architecture/api-kit.md`, `docs/developer_guide/api-development.md`
+- CRUD/data flow: `docs/architecture/crud-kit.md`, `docs/developer_guide/data-operations-crud.md`
+- Polars usage: `docs/architecture/polars-kit.md`, `docs/developer_guide/polars-utilities.md`
+- Validation: `docs/architecture/validation-kit.md`, `docs/developer_guide/validations.md`
+- Responses: `docs/architecture/response-kit.md`, `docs/developer_guide/responses.md`
+- Queue workflows: `docs/developer_guide/queued-api-processing.md`
+- Testing: `docs/architecture/tdd-kit.md`, `docs/developer_guide/test-driven-development.md`
+- CLI/scaffolding: `docs/architecture/management-kit.md`
+- Contribution/commit rules: `docs/community/contribution-guide.md`
 
-## Serializer vs Polars Choice
+## S4.2 Expected Project Structure (Keep Aligned)
 
-- Prefer serializers when:
-  - payloads are small or strongly object-shaped
-  - business rules are request/field-centric
-- Prefer Polars + CRUD kit when:
-  - payloads are bulk/high-volume/tabular
-  - transform/merge/filter steps are data-frame oriented
-- Prefer hybrid when both are true in the same API.
+Agents must keep generated and edited code aligned with Mindoff project structure:
 
-## Project Structure Rules
+- `apps/<app_name>/apis/`
+- `apps/<app_name>/components/`
+- `apps/<app_name>/tests/`
+- `apps/<app_name>/models.py`
+- `apps/<app_name>/urls.py`
+- `config/settings.py`
+- `config/urls.py`
+- `config/responses.csv` (response code registry)
+- `pytest.ini` (root-level test runner configuration)
+- `mindoff.py` (manager command entrypoint)
 
-- Follow Mindoff generated structure; do not invent arbitrary layout.
-- Keep helper/business support logic under each app's `components/` folder.
-- Keep APIs under `apps/<app_name>/apis/`.
-- Keep tests in app test structure (`tests/`, `test_apis/`, `test_views.py`, etc.) and add/extend tests with each behavior change.
-- Respect existing naming and routing conventions (`<app>__<api>` route names, version routers in `views.py`).
+Do not manually invent alternative structure for scaffolded components unless the user explicitly requests a custom layout.
 
-## Model and Foreign Key Rules
+## S5. Framework-First Implementation Rules
 
-- For new models, default PK to UUID for Mindoff compatibility:
-  - `id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, db_column="id")`
-- Primary key must always be named `id` and `db_column` must always be `"id"`.
-- If you detect non-UUID primary keys (or non-`id` PK naming/column), explicitly notify the user about `django-mindoff` CRUD incompatibility risk.
-- Foreign key naming must follow Mindoff conventions:
-  - field name ends with `_ref`
-  - database column ends with `_ref_id` (via `db_column="<field_name>_id"` where field name is already `_ref`)
-- Follow manager behavior (`create_model_field` and create flow normalization) for FK naming; do not invent alternate FK naming patterns.
+- Prefer Mindoff kits over custom plumbing.
+- Keep request handlers thin; place reusable logic in components/services.
+- Use `MindoffAPIMixin` for API classes unless explicitly asked otherwise.
+- Use `mo_validation_kit` for validation flows.
+- Use `mo_response_kit` for consistent response format.
+- Use `mo_crud_kit` + `mo_polars_kit` for bulk/tabular data work.
+- Preserve backward compatibility unless explicitly asked for breaking changes.
 
-## Test Writing Conventions (Mindoff TDD Kit)
+## S5.1 Manager Commands for Scaffolding (Mandatory)
 
-- Prefer Mindoff test kit over ad-hoc test utilities:
-  - `from django_mindoff.components.tdd_kit import MindoffTestCase`
-  - `from django_mindoff.components.tdd_kit import MindoffRouterTestCase` (for router/version tests)
-- Prefer class-based test cases for APIs.
-- Organize by scenario/feature:
-  - One API test class for the API baseline behavior.
-  - Use separate test methods for scenarios.
-  - If a feature area is large, create a dedicated test class for that feature.
-- Use pytest-native style for tests:
-  - prefer plain `assert` over unittest assertion methods
-  - prefer `pytest.raises(...)` for exception assertions
-  - prefer `@pytest.mark.parametrize` for matrix/scenario coverage
-  - prefer reusable pytest fixtures for setup/teardown
-- Leverage `self` extensions provided by `MindoffTestCase` instead of re-implementing fixtures/utilities:
-  - `self.mo_mock_call_api`
-  - `self.mo_assert_api_response`
-  - `self.mo_mock_user`
-  - `self.mo_mock_app`
-  - `self.mo_mock_model`
-  - `self.mo_mock_model_frms`
-  - `self.mo_update_mock_model_frms`
-- Avoid unittest-style assertion helpers unless maintaining existing legacy tests that already use them.
-- Keep tests behavior-first and scenario-named (`test_acceptance_*`, `test_rejection_*`, `test_boundary_*` where applicable).
-- For API tests, keep route identity consistent by using the same `api_url_name` in both call and assertion helpers.
-- Review available helper parameters before writing tests so built-in features are fully used:
-  - `self.mo_mock_call_api(...)` inputs like payload, query params, headers, url kwargs, user, etc.
-  - `self.mo_assert_api_response(...)` expected status/response-type/code/data checks as needed by scenario.
+For scaffolding tasks, agents must use manager commands with explicit arguments instead of creating/editing scaffold files manually.
 
-## Scaffolding and Consistency
+Do not use interactive `create` or `delete` flows for agent automation. Use the direct commands below:
 
-- Prefer `python mindoff.py create` flows for app/model/api scaffolding.
-- For creating apps, models, and foreign keys, use Mindoff CLI by default so folder/module structure remains valid and non-hallucinated.
-- Preserve managed markers/comments used by generators.
-- Do not break `settings.py` and `urls.py` wiring conventions established by init/create flows.
+- Create app(s):
+  `python mindoff.py createapp <app_name> [<app_name_2> ...]`
+- Create API:
+  `python mindoff.py createapi <app_name>/<api_name> [--url <path_1> <path_2> ...]`
+- Create model:
+  `python mindoff.py createmodel <app_name>/<ModelName>`
+- Create foreign key field (model field):
+  `python mindoff.py create_model_field <app_name>/<ModelName> <field_name> --to <parent_app>/<ParentModel>`
+- Delete app(s):
+  `python mindoff.py deleteapp <app_name> [<app_name_2> ...]`
 
-## Documentation Version Discipline
+AI agents must not use `django-mindoff` CLI commands. Use `python mindoff.py ...` manager commands only.
 
-- When referencing docs, always use the documentation version that matches:
-  - installed `django-mindoff` package version
-  - installed Django major/minor version in the user environment
-- Do not rely on latest docs by default when project/runtime version may differ.
+Why mandatory:
 
-## API Version Upgrade Rules (V1 -> V2+)
+- These commands enforce Mindoff scaffolding contracts and route/settings wiring.
+- Manual file creation can misalign with framework-generated structure.
+- Use manual edits only when the user explicitly asks for a custom/non-standard layout.
 
-- Never overwrite an existing API version class when the request is to evolve behavior.
-- Prefer additive versioning:
-  - keep existing `V1` class intact
-  - create `V2` (or next version) class
-  - update router `VERSION_MAP` with the new version mapping
-  - preserve backward compatibility unless user explicitly asks to break it
-- If asked to "modify" an existing API and change is behavior-affecting, confirm with user before upgrading version:
-  - ask whether they want a new version (`V2`) instead of overwriting `V1`
-  - proceed only after explicit confirmation
-- If user explicitly asks to overwrite an existing version, still warn about backward-compatibility impact before proceeding.
-- When creating a new API version, add/adjust tests for both:
-  - new version behavior
-  - router version resolution expectations
+Post-scaffold required steps:
 
-## Error Handling and Responses
+- After `createmodel` and `create_model_field`, run:
+  `python manage.py makemigrations`
+  `python manage.py migrate`
 
-- Use `MindoffValidationError` patterns and `code/category/data` contracts consistently.
-- Keep response codes aligned with `config/responses.csv`.
-- Avoid raw unstructured exception responses in API code.
+## S6. Data and Polars Rules
 
-## Practical Quality Bar
+- Use vectorized operations; avoid Python row loops for bulk transforms.
+- Prefer lazy/streaming strategy for large datasets.
+- Use model-frame mapping when bulk model operations are required:
+  `{ModelClass: pl.DataFrame | pl.LazyFrame}`
 
-- Keep code minimal, explicit, and aligned with existing kit patterns in this repo.
-- Reuse helper functions from kits before adding new utilities.
-- Add tests for new behavior paths (success, fail, edge cases), especially around validation and CRUD status handling.
+## S7. Testing Rules
+
+- Add/update focused tests when behavior changes.
+- Prefer Mindoff test helpers from `tdd_kit`.
+- Keep fixtures small and deterministic.
+- Run targeted tests first.
+- Follow testing rules from:
+  - `docs/architecture/tdd-kit.md`
+  - `docs/developer_guide/test-driven-development.md`
+- These testing rules are mandatory for AI-generated test changes.
+
+## S7.1 API Security Baseline
+
+- Production APIs must explicitly define `authentication_classes`.
+- Production APIs must explicitly define `permission_classes`.
+- Do not rely on implicit/default auth or permissions for protected endpoints.
+
+## S7.2 Queue Mode Preconditions
+
+If API uses `process_mode = "queue"`:
+
+- Ensure `REDIS_URL` is configured.
+- Ensure queue worker process is running before validating queue flows.
+- Add or update tests for queue-mode behavior (enqueue/status/retry/cancel as relevant).
+
+## S8. Git Commit Standard
+
+Source: `docs/community/contribution-guide.md`.
+
+Use:
+
+`:<gitmoji_code>: <Verb> <short action-oriented description>`
+
+Example:
+
+`:sparkles: Add bulk update validation`
+
+## S9. Documentation Duty
+
+When behavior, architecture, conventions, or scaffolding changes:
+
+1. Update the related docs in the same task.
+2. Remove stale/duplicate guidance.
+3. Keep references to canonical files.
+4. Keep this `AGENTS.md` updated when project-wide agent rules or workflow expectations change.
+
+## S10. Practical Outcome
+
+Prioritize clarity, correctness, and maintainability while minimizing token and implementation overhead.
+
+## S11. Definition of Done
+
+Before closing a task, ensure:
+
+1. Targeted tests for changed behavior pass.
+2. Relevant documentation is updated (`AGENTS.md`, related project docs, and docs pages if behavior changed).
+3. Commit message follows the Git commit standard in this file.
