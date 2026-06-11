@@ -105,6 +105,6 @@
 
 ## Notes
 
-- All notable changes to **Django Mindoff** are documented in [Changelog](https://github.com/mindoffwork/django-mindoff/blob/main/CHANGELOG.md).
+- All notable changes to **Django Mindoff** are documented in [Changelog](https://github.com/mindoffwork/django-mindoff/blob/root/CHANGELOG.md).
 - For Released versions, see [Releases](https://github.com/mindoffwork/django-mindoff/releases)
 - Packaging and project metadata are available in `pyproject.toml`.
