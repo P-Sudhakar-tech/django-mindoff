@@ -3,6 +3,7 @@
 ## Recent Changes
 
 ### Enhancements
+- ✨ Improve runtime safety and response resource guards ([#33](https://github.com/mindoffwork/django-mindoff/pull/33))
 - ✨ Expand public API surface and harden compatibility coverage ([#32](https://github.com/mindoffwork/django-mindoff/pull/32))
 - 💄 Refresh docs design and update README ([#31](https://github.com/mindoffwork/django-mindoff/pull/31))
 
