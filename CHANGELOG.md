@@ -1,6 +1,6 @@
 <h1>Release Notes</h1>
 
-## Recent Changes
+## v0.6.0
 
 ### Enhancements
 - ✨ Improve runtime safety and response resource guards ([#33](https://github.com/mindoffwork/django-mindoff/pull/33))
