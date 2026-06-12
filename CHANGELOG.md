@@ -3,6 +3,7 @@
 ## Recent Changes
 
 ### Enhancements
+- ✨ Expand public API surface and harden compatibility coverage ([#32](https://github.com/mindoffwork/django-mindoff/pull/32))
 - 💄 Refresh docs design and update README ([#31](https://github.com/mindoffwork/django-mindoff/pull/31))
 
 ## v0.5.0
