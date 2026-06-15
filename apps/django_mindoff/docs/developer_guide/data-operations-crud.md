@@ -3,6 +3,12 @@
 Use `mo_crud_kit` for model-aware bulk create/read/update workflows with Polars frames.
 This workflow is designed for data-heavy endpoints where serializer-by-row patterns become a bottleneck. It applies directly to high-volume ingestion and update APIs.
 
+<div class="admonition note">
+<p class="admonition-title">When to use mo_crud_kit — and when not to</p>
+<p><code>mo_crud_kit</code> is designed for workflows where data arrives or is consumed in bulk: ingestion pipelines, large exports, high-volume upserts, or any operation where the dataset is large enough that row-by-row serializer overhead or <code>bulk_create</code> become the bottleneck. It works on Polars <code>DataFrame</code> and <code>LazyFrame</code> inputs — not on individual model instances.</p>
+<p>For everyday operations — creating a single record, updating a user profile, returning a list of 20 results — <strong>use native Django serializers</strong>. They are simpler, easier to debug, and the right tool at that scale. Reach for <code>mo_crud_kit</code> when volume is the problem. The two approaches are complementary; most projects use both.</p>
+</div>
+
 ## Prerequisites
 
 - Models are migrated and uses UUID primary/foreign keys.
@@ -56,11 +62,19 @@ model_frms = {
 from django_mindoff import mo_crud_kit
 from apps.orders.models import OrderModel
 
-# CREATE
+# CREATE (full validation, written in batch_size chunks via the backend's fast
+# bulk loader: PostgreSQL COPY / MySQL LOAD DATA / SQLite executemany)
 create_status, create_valid, create_invalid = mo_crud_kit.create(
     {OrderModel: order_df},
-    is_validate=True,
+    validation_level="full",   # "full" | "columns_only" | "none"
     is_partial=False,
+    batch_size=1000,
+)
+
+# CREATE (fast path: caller guarantees clean, DB-ready rows — skip row+FK passes)
+mo_crud_kit.create(
+    {OrderModel: order_df},
+    validation_level="columns_only",
 )
 
 # READ (queryset must use values())
@@ -68,14 +82,27 @@ orders_frm, stats = mo_crud_kit.read(
     OrderModel.objects.filter(is_active=True).values(),
     page_number=1,
     batch_size=100,
+    with_stats=False,   # skip exists()/count() for the fastest read
 )
 
-# UPDATE
+# LARGER-THAN-RAM: a real lazy scan (streamed to disk, scanned lazily)
+lazy_frm, _ = mo_crud_kit.read(
+    OrderModel.objects.all().values(), is_lazy=True
+)
+
+# LARGER-THAN-RAM: process in memory-bounded chunks (never concatenated)
+for chunk in mo_crud_kit.read_batches(
+    OrderModel.objects.all().values(), batch_size=10_000
+):
+    handle(chunk)
+
+# UPDATE (staged merge: bulk-load staging table, then set-based SQL merge)
 update_status, update_valid, update_invalid = mo_crud_kit.update(
     {OrderModel: order_df},
-    is_validate=True,
+    validation_level="full",   # "full" | "columns_only" | "none"
     is_partial=True,
-    is_temp_table=True,
+    # skip_db_fill=True,  # skip the missing-column prefetch when the frame
+    #                     # already has every column (e.g. a full read() frame)
 )
 ```
 
