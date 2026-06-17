@@ -3,6 +3,7 @@
 ## Recent Changes
 
 ### Enhancements
+- 🔧 Update scaffold gitignore defaults ([#35](https://github.com/mindoffwork/django-mindoff/pull/35))
 - ⚡ Optimize framework performance and simplify CRUD operations ([#34](https://github.com/mindoffwork/django-mindoff/pull/34))
 
 ## v0.6.0
