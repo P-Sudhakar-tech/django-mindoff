@@ -1,5 +1,10 @@
 <h1>Release Notes</h1>
 
+## Recent Changes
+
+### Enhancements
+- ⚡ Optimize framework performance and simplify CRUD operations ([#34](https://github.com/mindoffwork/django-mindoff/pull/34))
+
 ## v0.6.0
 
 ### Enhancements
