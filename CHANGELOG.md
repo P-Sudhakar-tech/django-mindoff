@@ -1,6 +1,6 @@
 <h1>Release Notes</h1>
 
-## Recent Changes
+## v0.7.0
 
 ### Enhancements
 - 🔧 Update scaffold gitignore defaults ([#35](https://github.com/mindoffwork/django-mindoff/pull/35))
