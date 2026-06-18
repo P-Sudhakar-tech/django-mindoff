@@ -6,6 +6,9 @@
 - 🔧 Update scaffold gitignore defaults ([#35](https://github.com/mindoffwork/django-mindoff/pull/35))
 - ⚡ Optimize framework performance and simplify CRUD operations ([#34](https://github.com/mindoffwork/django-mindoff/pull/34))
 
+### Documentation
+- 📝 Refresh package messaging for Polars and queueing ([#36](https://github.com/mindoffwork/django-mindoff/pull/36))
+
 ## v0.6.0
 
 ### Enhancements
