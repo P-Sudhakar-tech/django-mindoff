@@ -1,5 +1,10 @@
 <h1>Release Notes</h1>
 
+## Recent Changes
+
+### Documentation
+- 📝 Document CRUD benchmark results in README ([#37](https://github.com/mindoffwork/django-mindoff/pull/37))
+
 ## v0.7.0
 
 ### Enhancements
