@@ -5,6 +5,9 @@
 ### Documentation
 - 📝 Document CRUD benchmark results in README ([#37](https://github.com/mindoffwork/django-mindoff/pull/37))
 
+### Internal
+- 🔧 Add GitHub issue, PR, and Dependabot templates ([#38](https://github.com/mindoffwork/django-mindoff/pull/38))
+
 ## v0.7.0
 
 ### Enhancements
