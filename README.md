@@ -6,7 +6,7 @@ _Build production-ready Django REST APIs with native Polars support and built-in
 
 Django Mindoff is an architectural framework that covers four recurring pain points in Django API development. It scaffolds new projects and apps with a modular, production-ready layout and handles the repetitive wiring that usually fills the first day of any new project. Every API gets payload validation, standardized responses, versioning, and basic automated tests built in by default, without any extra configuration. For teams dealing with large datasets, Mindoff integrates natively with Polars so reads and writes operate on DataFrames directly, with vectorized validation and bulk database writes instead of serializer loops. And when an API needs to run in the background, switching to queue-based execution is a single config change and Mindoff manages the Dramatiq and Redis layer, including retries, cancellation, and status tracking.
 
-[![CI](https://github.com/mindoffwork/django-mindoff/actions/workflows/ci.yml/badge.svg?branch=root)](https://github.com/mindoffwork/django-mindoff/actions/workflows/ci.yml)
+[![CI](https://github.com/mindoffwork/django-mindoff/actions/workflows/root_ci.yml/badge.svg?branch=root)](https://github.com/mindoffwork/django-mindoff/actions/workflows/root_ci.yml)
 [![Coverage Status](https://codecov.io/gh/mindoffwork/django-mindoff/branch/root/graph/badge.svg)](https://codecov.io/gh/mindoffwork/django-mindoff)
 [![PyPI version](https://img.shields.io/pypi/v/django-mindoff.svg?logo=pypi&logoColor=white)](https://pypi.org/project/django-mindoff/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB?logo=python&logoColor=white)](https://github.com/mindoffwork/django-mindoff/actions/workflows/ci.yml)
