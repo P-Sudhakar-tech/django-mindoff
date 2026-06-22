@@ -6,6 +6,7 @@
 - 📝 Document CRUD benchmark results in README ([#37](https://github.com/mindoffwork/django-mindoff/pull/37))
 
 ### Internal
+- ⬆️ Update pyarrow requirement from <20.0.0,>=17.0.0 to >=17.0.0,<25.0.0 ([#46](https://github.com/mindoffwork/django-mindoff/pull/46))
 - ⬆️ Bump actions/checkout from 6 to 7 ([#47](https://github.com/mindoffwork/django-mindoff/pull/47))
 - ⬆️ Update pytest requirement from <9.0,>=8.0 to >=8.0,<10.0 ([#45](https://github.com/mindoffwork/django-mindoff/pull/45))
 - ⬆️ Update redis requirement from <6.0.0,>=5.0.0 to >=5.0.0,<9.0.0 ([#44](https://github.com/mindoffwork/django-mindoff/pull/44))
