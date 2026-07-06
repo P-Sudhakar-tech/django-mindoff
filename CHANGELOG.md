@@ -6,6 +6,7 @@
 - 📝 Document CRUD benchmark results in README ([#37](https://github.com/mindoffwork/django-mindoff/pull/37))
 
 ### Internal
+- ⬆️ Update pymdown-extensions requirement from <11.0,>=10.0 to >=10.0,<12.0 ([#49](https://github.com/mindoffwork/django-mindoff/pull/49))
 - ⬆️ Update dramatiq requirement from <2.0,>=1.17.0 to >=1.17.0,<3.0 ([#48](https://github.com/mindoffwork/django-mindoff/pull/48))
 - ⬆️ Update pyarrow requirement from <20.0.0,>=17.0.0 to >=17.0.0,<25.0.0 ([#46](https://github.com/mindoffwork/django-mindoff/pull/46))
 - ⬆️ Bump actions/checkout from 6 to 7 ([#47](https://github.com/mindoffwork/django-mindoff/pull/47))
