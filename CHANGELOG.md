@@ -19,6 +19,9 @@
 - ⬆️ Bump codecov/codecov-action from 4 to 7 ([#39](https://github.com/mindoffwork/django-mindoff/pull/39))
 - 🔧 Add GitHub issue, PR, and Dependabot templates ([#38](https://github.com/mindoffwork/django-mindoff/pull/38))
 
+### Fixes
+- 🐛 Fix MOQueue get_user foreign-key resolution ([#52](https://github.com/mindoffwork/django-mindoff/pull/52))
+
 ## v0.7.0
 
 ### Enhancements
