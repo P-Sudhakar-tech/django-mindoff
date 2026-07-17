@@ -1,5 +1,10 @@
 <h1>Release Notes</h1>
 
+## Recent Changes
+
+### Internal
+- ⬆️ Update pyarrow requirement from <25.0.0,>=17.0.0 to >=17.0.0,<26.0.0 ([#54](https://github.com/mindoffwork/django-mindoff/pull/54))
+
 ## v0.8.0
 
 ### Documentation
